@@ -85,6 +85,7 @@ export class ConversationManager {
         });
 
         for (const toolCall of message.tool_calls) {
+          if (!("function" in toolCall)) continue;
           const name = toolCall.function.name;
           const args = JSON.parse(toolCall.function.arguments) as Record<string, unknown>;
           const category = getToolCategory(name);
