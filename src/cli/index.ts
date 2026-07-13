@@ -90,29 +90,43 @@ async function selectCommand(): Promise<string | null> {
   return new Promise((resolve) => {
     commandSelectorActive = true;
     let selected = 0;
-    const totalLines = COMMANDS.length + 2;
+
+    // Save the cursor position where the selector starts
+    process.stdout.write("\x1b[s");
 
     function render(): void {
-      process.stdout.write(`\x1b[${totalLines}A`);
-      for (let i = 0; i < totalLines; i++) {
-        process.stdout.write("\r\x1b[2K\n");
-      }
-      process.stdout.write(`\x1b[${totalLines}A`);
-
-      console.log("");
+      // Restore to saved position, then draw from there (only downward)
+      process.stdout.write("\x1b[u");
       for (let i = 0; i < COMMANDS.length; i++) {
         const c = COMMANDS[i];
+        process.stdout.write("\r\x1b[2K");
         if (i === selected) {
-          console.log(chalk.cyan(`  › ${c.name.padEnd(14)}${c.desc}`));
+          process.stdout.write(chalk.cyan(`  › ${c.name.padEnd(14)}${c.desc}`));
         } else {
-          console.log(chalk.dim(`    ${c.name.padEnd(14)}${c.desc}`));
+          process.stdout.write(chalk.dim(`    ${c.name.padEnd(14)}${c.desc}`));
         }
+        if (i < COMMANDS.length - 1) process.stdout.write("\n");
       }
+      // Move cursor back to saved position
+      process.stdout.write("\x1b[u");
     }
 
-    // Print blank lines, then render
-    for (let i = 0; i < totalLines; i++) console.log("");
+    // Print blank lines to reserve space
+    for (let i = 0; i < COMMANDS.length; i++) process.stdout.write("\n");
+    // Move back up to start position
+    process.stdout.write(`\x1b[${COMMANDS.length}A`);
+    // Save this position
+    process.stdout.write("\x1b[s");
     render();
+
+    function cleanup(): void {
+      process.stdout.write("\x1b[u");
+      for (let i = 0; i < COMMANDS.length; i++) {
+        process.stdout.write("\r\x1b[2K");
+        if (i < COMMANDS.length - 1) process.stdout.write("\n");
+      }
+      process.stdout.write("\x1b[u");
+    }
 
     const onKeypress = (_str: string, key: readline.Key) => {
       if (!key) return;
@@ -124,21 +138,12 @@ async function selectCommand(): Promise<string | null> {
         render();
       } else if (key.name === "return") {
         process.stdin.removeListener("keypress", onKeypress);
-        // Clear the selector
-        process.stdout.write(`\x1b[${totalLines}A`);
-        for (let i = 0; i < totalLines; i++) {
-          process.stdout.write("\r\x1b[2K\n");
-        }
-        process.stdout.write(`\x1b[${totalLines}A`);
+        cleanup();
         commandSelectorActive = false;
         resolve(COMMANDS[selected].name);
       } else if (key.name === "escape" || key.name === "backspace") {
         process.stdin.removeListener("keypress", onKeypress);
-        process.stdout.write(`\x1b[${totalLines}A`);
-        for (let i = 0; i < totalLines; i++) {
-          process.stdout.write("\r\x1b[2K\n");
-        }
-        process.stdout.write(`\x1b[${totalLines}A`);
+        cleanup();
         commandSelectorActive = false;
         resolve(null);
       }
@@ -256,70 +261,75 @@ async function selectModel(): Promise<void> {
   return new Promise((resolve) => {
     let selected = MODELS.findIndex((m) => m.id === config.model);
     if (selected === -1) selected = 0;
+    const headerLines = 2; // "Select Model" + blank line
+    const totalLines = headerLines + MODELS.length;
+
+    process.stdout.write("\x1b[s");
 
     function render(): void {
-      // Clear previous render
-      process.stdout.write(`\x1b[${MODELS.length + 3}A`);
-      for (let i = 0; i < MODELS.length + 3; i++) {
-        process.stdout.write("\r\x1b[2K\n");
-      }
-      process.stdout.write(`\x1b[${MODELS.length + 3}A`);
-
-      console.log("");
-      console.log(chalk.bold("  Select Model"));
-      console.log("");
+      process.stdout.write("\x1b[u");
+      process.stdout.write("\r\x1b[2K" + chalk.bold("  Select Model") + "\n");
+      process.stdout.write("\r\x1b[2K\n");
       for (let i = 0; i < MODELS.length; i++) {
         const m = MODELS[i];
         const current = m.id === config.model ? chalk.dim(" (current)") : "";
+        process.stdout.write("\r\x1b[2K");
         if (i === selected) {
-          console.log(chalk.cyan(`  › ${(i + 1)}. ${chalk.bold(m.id)}${current}  ${chalk.dim(m.desc)}`));
+          process.stdout.write(chalk.cyan(`  › ${(i + 1)}. ${chalk.bold(m.id)}${current}  ${chalk.dim(m.desc)}`));
         } else {
-          console.log(chalk.dim(`    ${(i + 1)}. ${m.id}${current}  ${m.desc}`));
+          process.stdout.write(chalk.dim(`    ${(i + 1)}. ${m.id}${current}  ${m.desc}`));
         }
+        if (i < MODELS.length - 1) process.stdout.write("\n");
       }
+      process.stdout.write("\x1b[u");
     }
 
-    // Initial render - print blank lines first so we can overwrite
-    for (let i = 0; i < MODELS.length + 3; i++) {
-      console.log("");
-    }
+    // Reserve space
+    for (let i = 0; i < totalLines; i++) process.stdout.write("\n");
+    process.stdout.write(`\x1b[${totalLines}A`);
+    process.stdout.write("\x1b[s");
     render();
+
+    function cleanup(): void {
+      process.stdout.write("\x1b[u");
+      for (let i = 0; i < totalLines; i++) {
+        process.stdout.write("\r\x1b[2K");
+        if (i < totalLines - 1) process.stdout.write("\n");
+      }
+      process.stdout.write("\x1b[u");
+    }
 
     const onKeypress = (_str: string, key: readline.Key) => {
       if (!key) return;
 
-      if (key.name === "up" || (key.name === "k")) {
+      if (key.name === "up") {
         selected = (selected - 1 + MODELS.length) % MODELS.length;
         render();
-      } else if (key.name === "down" || (key.name === "j")) {
+      } else if (key.name === "down") {
         selected = (selected + 1) % MODELS.length;
         render();
       } else if (key.name === "return") {
         process.stdin.removeListener("keypress", onKeypress);
+        cleanup();
         const chosen = MODELS[selected];
         saveConfig({ model: chosen.id });
         config = loadConfig();
         rebuildCM();
-        console.log("");
         console.log(chalk.green(`  ✓ model → ${chalk.bold(chosen.id)}`));
         console.log("");
         resolve();
       } else if (key.name === "escape" || (key.ctrl && key.name === "c")) {
         process.stdin.removeListener("keypress", onKeypress);
-        console.log("");
-        console.log(chalk.dim("  취소됨"));
-        console.log("");
+        cleanup();
         resolve();
       } else if (_str >= "1" && _str <= String(MODELS.length)) {
-        // Number key selection
         selected = parseInt(_str) - 1;
         process.stdin.removeListener("keypress", onKeypress);
+        cleanup();
         const chosen = MODELS[selected];
         saveConfig({ model: chosen.id });
         config = loadConfig();
         rebuildCM();
-        render();
-        console.log("");
         console.log(chalk.green(`  ✓ model → ${chalk.bold(chosen.id)}`));
         console.log("");
         resolve();
