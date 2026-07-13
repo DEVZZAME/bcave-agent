@@ -139,12 +139,12 @@ let lastSuggestionLines = 0;
 
 function clearSuggestions(): void {
   if (lastSuggestionLines > 0) {
+    // Save cursor, move to each suggestion line and erase it, restore cursor
+    process.stdout.write("\x1b[s");
     for (let i = 0; i < lastSuggestionLines; i++) {
-      process.stdout.write("\x1b[B\x1b[2K");
+      process.stdout.write("\x1b[B\r\x1b[2K");
     }
-    for (let i = 0; i < lastSuggestionLines; i++) {
-      process.stdout.write("\x1b[A");
-    }
+    process.stdout.write("\x1b[u");
     lastSuggestionLines = 0;
   }
 }
@@ -156,16 +156,16 @@ function showSuggestions(line: string): void {
   const matches = COMMANDS.filter((c) => c.name.startsWith(line));
   if (matches.length === 0 || (matches.length === 1 && matches[0].name === line)) return;
 
+  // Save cursor position
   process.stdout.write("\x1b[s");
 
-  const lines: string[] = [];
+  // Move below prompt and write suggestions
   for (const cmd of matches) {
-    lines.push(chalk.dim("    ") + chalk.cyan(cmd.name.padEnd(14)) + chalk.dim(cmd.desc));
+    process.stdout.write("\n\r\x1b[2K" + chalk.dim("    ") + chalk.cyan(cmd.name.padEnd(14)) + chalk.dim(cmd.desc));
   }
+  lastSuggestionLines = matches.length;
 
-  process.stdout.write("\n" + lines.join("\n"));
-  lastSuggestionLines = lines.length;
-
+  // Restore cursor back to prompt
   process.stdout.write("\x1b[u");
 }
 
@@ -185,7 +185,14 @@ process.stdin.on("keypress", (_str: string, key: readline.Key) => {
 });
 
 let currentLine = "";
-process.stdin.on("keypress", () => {
+process.stdin.on("keypress", (_str: string, key2: readline.Key) => {
+  // Clear suggestions immediately on Enter before readline processes it
+  if (key2 && key2.name === "return") {
+    clearSuggestions();
+    currentLine = "";
+    return;
+  }
+
   setImmediate(() => {
     const line = (rl as unknown as { line: string }).line ?? "";
     if (line !== currentLine) {
