@@ -83,38 +83,17 @@ const COMMANDS = [
   { name: "/mode", desc: "모드 전환" },
 ];
 
+// Tab completion: /로 시작하면 명령어 목록 + 설명 표시
 function slashCompleter(line: string): [string[], string] {
   if (!line.startsWith("/")) return [[], line];
-  const matches = COMMANDS.filter((c) => c.name.startsWith(line)).map((c) => c.name);
-  return [matches, line];
-}
-
-let lastSuggestionLines = 0;
-
-function clearSuggestions(): void {
-  if (lastSuggestionLines > 0) {
-    process.stdout.write("\x1b[s");
-    for (let i = 0; i < lastSuggestionLines; i++) {
-      process.stdout.write("\x1b[B\r\x1b[2K");
-    }
-    process.stdout.write("\x1b[u");
-    lastSuggestionLines = 0;
-  }
-}
-
-function showSuggestions(line: string): void {
-  clearSuggestions();
-  if (!line.startsWith("/") || line.includes(" ")) return;
-
   const matches = COMMANDS.filter((c) => c.name.startsWith(line));
-  if (matches.length === 0 || (matches.length === 1 && matches[0].name === line)) return;
-
-  process.stdout.write("\x1b[s");
-  for (const cmd of matches) {
-    process.stdout.write("\n\r\x1b[2K" + chalk.dim("   " + cmd.name.padEnd(14) + cmd.desc));
-  }
-  lastSuggestionLines = matches.length;
-  process.stdout.write("\x1b[u");
+  if (matches.length === 0) return [[], line];
+  // Show "name  — desc" format for display, but complete with just the name
+  const display = matches.map((c) => `${c.name.padEnd(14)}${chalk.dim(c.desc)}`);
+  const completions = matches.map((c) => c.name);
+  // If only one match, complete it directly
+  if (completions.length === 1) return [completions, line];
+  return [display, line];
 }
 
 // ─── Readline ──────────────────────────────────────────
@@ -124,16 +103,12 @@ const rl = readline.createInterface({
   completer: slashCompleter,
 });
 
-// Shift+Tab: mode cycle — close current prompt and re-prompt with new mode
+// Shift+Tab: mode cycle
 process.stdin.on("keypress", (_str: string, key: readline.Key) => {
   if (key && key.name === "tab" && key.shift) {
-    // Clear the current prompt line
     process.stdout.write("\r\x1b[2K");
     cycleMode();
-    // Re-draw prompt with updated mode (using setImmediate to let readline settle)
     setImmediate(() => {
-      // Close and recreate the current question by writing empty line
-      // We simulate pressing Enter on empty to restart prompt
       (rl as unknown as { line: string }).line = "";
       rl.write("\n");
     });
@@ -141,41 +116,17 @@ process.stdin.on("keypress", (_str: string, key: readline.Key) => {
   }
 });
 
-// Live slash suggestions
-let currentLine = "";
-process.stdin.on("keypress", (_str: string, key2: readline.Key) => {
-  if (key2 && key2.name === "return") {
-    clearSuggestions();
-    currentLine = "";
-    return;
-  }
-  setImmediate(() => {
-    const line = (rl as unknown as { line: string }).line ?? "";
-    if (line !== currentLine) {
-      currentLine = line;
-      if (line.startsWith("/")) {
-        showSuggestions(line);
-      } else {
-        clearSuggestions();
-      }
-    }
-  });
-});
-
 function getTermWidth(): number {
   return process.stdout.columns || 80;
 }
 
 function prompt(): void {
-  currentLine = "";
-  lastSuggestionLines = 0;
   const modeInfo = MODE_INFO[mode];
   const modeTag = modeInfo.color(modeInfo.label);
   const cwd = process.cwd();
   const separator = chalk.dim("─".repeat(getTermWidth()));
   console.log(separator);
   rl.question(`${modeTag} ${chalk.dim(cwd)} ${chalk.bold(">")} `, (answer) => {
-    clearSuggestions();
     handleInput(answer);
   });
 }
