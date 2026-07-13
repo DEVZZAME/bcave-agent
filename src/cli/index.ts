@@ -323,18 +323,33 @@ async function selectModel(): Promise<void> {
 }
 
 // ─── API Key Setup ─────────────────────────────────────
-async function setupApiKey(): Promise<void> {
+async function setupApiKey(cancellable = false): Promise<boolean> {
   return new Promise((resolve) => {
     console.log("");
     console.log(chalk.bold("  API 키를 입력해주세요."));
     console.log(chalk.dim("  키는 ~/.bcave/config.json에 저장됩니다."));
+    if (cancellable) {
+      console.log(chalk.dim("  빈 입력으로 취소할 수 있습니다."));
+    }
     console.log("");
 
     rl.question(chalk.dim("  API Key > "), (key) => {
       const trimmed = key.trim();
+
+      if (!trimmed) {
+        if (cancellable) {
+          console.log(chalk.dim("  취소됨"));
+          console.log("");
+          resolve(false);
+          return;
+        }
+        setupApiKey(cancellable).then(resolve);
+        return;
+      }
+
       if (!trimmed.startsWith("sk-")) {
         console.log(chalk.red("  올바른 API 키가 아닙니다 (sk- 로 시작해야 함)"));
-        setupApiKey().then(resolve);
+        setupApiKey(cancellable).then(resolve);
         return;
       }
       saveConfig({ apiKey: trimmed });
@@ -342,7 +357,7 @@ async function setupApiKey(): Promise<void> {
       console.log(chalk.green("  ✓ API 키 저장 완료"));
       console.log("");
       rebuildCM();
-      resolve();
+      resolve(true);
     });
   });
 }
@@ -366,7 +381,7 @@ async function handleSlashCommand(text: string): Promise<boolean> {
 
   if (trimmed === "/help") { showHelp(); return true; }
 
-  if (trimmed === "/api-key") { await setupApiKey(); return true; }
+  if (trimmed === "/api-key") { await setupApiKey(true); return true; }
 
   if (trimmed === "/reset") {
     const configPath = `${getConfigDir()}/config.json`;
