@@ -217,27 +217,20 @@ process.stdin.on("keypress", (_str: string, key: readline.Key) => {
   }
 });
 
-// "/" typed → open command selector
+// "/" typed → close current question, then open command selector
+let pendingCommandSelector = false;
+
 process.stdin.on("keypress", (str: string) => {
   if (selectorActive) return;
   if (str === "/") {
-    setImmediate(async () => {
+    setImmediate(() => {
       const line = (rl as unknown as { line: string }).line ?? "";
       if (line === "/") {
-        // Clear the current prompt line with "/"
+        pendingCommandSelector = true;
+        // Clear visual line and submit empty to close current rl.question
         process.stdout.write("\r\x1b[2K");
-        // Close current readline question
         (rl as unknown as { line: string }).line = "";
-
-        const chosen = await selectCommand();
-        if (chosen) {
-          // Execute the chosen command directly
-          await handleSlashCommand(chosen);
-          prompt();
-        } else {
-          // Cancelled — re-draw prompt
-          prompt();
-        }
+        rl.write("\n");
       }
     });
   }
@@ -491,6 +484,19 @@ async function processAgentEvents(gen: AsyncGenerator<AgentEvent>): Promise<void
 
 // ─── Main Input ────────────────────────────────────────
 async function handleInput(text: string): Promise<void> {
+  // Check if "/" triggered the command selector
+  if (pendingCommandSelector) {
+    pendingCommandSelector = false;
+    // Also clear the separator line that prompt() printed
+    process.stdout.write("\x1b[A\r\x1b[2K");
+    const chosen = await selectCommand();
+    if (chosen) {
+      await handleSlashCommand(chosen);
+    }
+    prompt();
+    return;
+  }
+
   const trimmed = text.trim();
   if (!trimmed || trimmed === "/") {
     // Clear the empty separator+prompt and re-draw
