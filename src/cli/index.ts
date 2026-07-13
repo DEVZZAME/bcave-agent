@@ -83,26 +83,80 @@ const COMMANDS = [
   { name: "/reset", desc: "설정 초기화" },
 ];
 
-// Tab completion for slash commands
-function slashCompleter(line: string): [string[], string] {
-  if (!line.startsWith("/")) return [[], line];
-  const matches = COMMANDS.filter((c) => c.name.startsWith(line));
-  if (matches.length === 0) return [[], line];
-  const completions = matches.map((c) => c.name);
-  if (completions.length === 1) return [completions, line];
-  // Show names for display
-  return [completions, line];
+// Interactive command selector (like model selector)
+let commandSelectorActive = false;
+
+async function selectCommand(): Promise<string | null> {
+  return new Promise((resolve) => {
+    commandSelectorActive = true;
+    let selected = 0;
+    const totalLines = COMMANDS.length + 2;
+
+    function render(): void {
+      process.stdout.write(`\x1b[${totalLines}A`);
+      for (let i = 0; i < totalLines; i++) {
+        process.stdout.write("\r\x1b[2K\n");
+      }
+      process.stdout.write(`\x1b[${totalLines}A`);
+
+      console.log("");
+      for (let i = 0; i < COMMANDS.length; i++) {
+        const c = COMMANDS[i];
+        if (i === selected) {
+          console.log(chalk.cyan(`  › ${c.name.padEnd(14)}${c.desc}`));
+        } else {
+          console.log(chalk.dim(`    ${c.name.padEnd(14)}${c.desc}`));
+        }
+      }
+    }
+
+    // Print blank lines, then render
+    for (let i = 0; i < totalLines; i++) console.log("");
+    render();
+
+    const onKeypress = (_str: string, key: readline.Key) => {
+      if (!key) return;
+      if (key.name === "up") {
+        selected = (selected - 1 + COMMANDS.length) % COMMANDS.length;
+        render();
+      } else if (key.name === "down") {
+        selected = (selected + 1) % COMMANDS.length;
+        render();
+      } else if (key.name === "return") {
+        process.stdin.removeListener("keypress", onKeypress);
+        // Clear the selector
+        process.stdout.write(`\x1b[${totalLines}A`);
+        for (let i = 0; i < totalLines; i++) {
+          process.stdout.write("\r\x1b[2K\n");
+        }
+        process.stdout.write(`\x1b[${totalLines}A`);
+        commandSelectorActive = false;
+        resolve(COMMANDS[selected].name);
+      } else if (key.name === "escape" || key.name === "backspace") {
+        process.stdin.removeListener("keypress", onKeypress);
+        process.stdout.write(`\x1b[${totalLines}A`);
+        for (let i = 0; i < totalLines; i++) {
+          process.stdout.write("\r\x1b[2K\n");
+        }
+        process.stdout.write(`\x1b[${totalLines}A`);
+        commandSelectorActive = false;
+        resolve(null);
+      }
+    };
+
+    process.stdin.on("keypress", onKeypress);
+  });
 }
 
 // ─── Readline ──────────────────────────────────────────
 const rl = readline.createInterface({
   input: process.stdin,
   output: process.stdout,
-  completer: slashCompleter,
 });
 
 // Shift+Tab: mode cycle
 process.stdin.on("keypress", (_str: string, key: readline.Key) => {
+  if (commandSelectorActive) return;
   if (key && key.name === "tab" && key.shift) {
     process.stdout.write("\r\x1b[2K");
     cycleMode();
@@ -114,14 +168,27 @@ process.stdin.on("keypress", (_str: string, key: readline.Key) => {
   }
 });
 
-// Auto-show completions when "/" is typed
+// "/" typed → open command selector
 process.stdin.on("keypress", (str: string) => {
+  if (commandSelectorActive) return;
   if (str === "/") {
-    // After readline processes the "/" character, trigger Tab completion
-    setImmediate(() => {
+    setImmediate(async () => {
       const line = (rl as unknown as { line: string }).line ?? "";
       if (line === "/") {
-        rl.write("\t");
+        // Clear the current prompt line with "/"
+        process.stdout.write("\r\x1b[2K");
+        // Close current readline question
+        (rl as unknown as { line: string }).line = "";
+
+        const chosen = await selectCommand();
+        if (chosen) {
+          // Execute the chosen command directly
+          await handleSlashCommand(chosen);
+          prompt();
+        } else {
+          // Cancelled — re-draw prompt
+          prompt();
+        }
       }
     });
   }
@@ -418,7 +485,7 @@ async function processAgentEvents(gen: AsyncGenerator<AgentEvent>): Promise<void
 // ─── Main Input ────────────────────────────────────────
 async function handleInput(text: string): Promise<void> {
   const trimmed = text.trim();
-  if (!trimmed) {
+  if (!trimmed || trimmed === "/") {
     // Clear the empty separator+prompt and re-draw
     process.stdout.write("\x1b[A\r\x1b[2K");
     prompt();
