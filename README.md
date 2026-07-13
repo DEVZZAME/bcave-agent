@@ -72,19 +72,29 @@ bcave
 bcave "README.md를 한국어로 번역해줘"
 ```
 
-### 모델 변경
+---
 
-대화 중 `/model` 입력 시 모델 선택 화면이 나타납니다.
+## 모델
 
-```bash
-bcave --model gpt-4o-mini "간단한 질문"
-```
+기본 모델은 `gpt-5.5`이며, `/model` 명령어 또는 `--model` 플래그로 변경할 수 있습니다.
+
+| 모델 | 설명 |
+|---|---|
+| **gpt-5.5** (기본) | Frontier model for complex coding, research, and real-world work. |
+| gpt-5.4 | Strong model for everyday coding. |
+| gpt-5.4-mini | Small, fast, and cost-efficient model for simpler coding tasks. |
+| gpt-4o | Strong multimodal model for complex tasks. |
+| gpt-4o-mini | Fast and cost-efficient for simple tasks. |
+| gpt-4.1 | Coding-specialized model with precise code generation. |
+| gpt-4.1-mini | Lightweight coding-specialized model. |
+| gpt-4.1-nano | Ultra-fast lightweight model. |
+| o4-mini | Reasoning model for complex problem solving. |
 
 ---
 
 ## 권한 모드
 
-`Shift+Tab`으로 전환하거나 `/mode` 명령어로 전환할 수 있습니다.
+`Shift+Tab` 또는 `/mode`로 전환할 수 있습니다.
 
 | 모드 | 플래그 | 동작 |
 |---|---|---|
@@ -96,6 +106,8 @@ bcave --model gpt-4o-mini "간단한 질문"
 
 ## 명령어
 
+`/` 입력 시 명령어 선택 화면이 나타납니다.
+
 | 명령어 | 설명 |
 |---|---|
 | `/help` | 도움말 표시 |
@@ -104,7 +116,6 @@ bcave --model gpt-4o-mini "간단한 질문"
 | `/mode` | 모드 전환 |
 | `/reset` | 설정 초기화 |
 | `Shift+Tab` | 모드 전환 |
-| `Tab` | 명령어 자동 완성 |
 | `Ctrl+C` | 종료 |
 
 ---
@@ -128,7 +139,7 @@ bcave --model gpt-4o-mini "간단한 질문"
 ```json
 {
   "apiKey": "sk-xxxxx",
-  "model": "gpt-4o",
+  "model": "gpt-5.5",
   "baseUrl": "https://api.openai.com/v1"
 }
 ```
