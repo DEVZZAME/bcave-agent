@@ -15,7 +15,7 @@ let initialPrompt: string | undefined;
 const keyIdx = args.indexOf("--set-api-key");
 if (keyIdx !== -1 && args[keyIdx + 1]) {
   saveConfig({ apiKey: args[keyIdx + 1] });
-  console.log(chalk.green("✅ API key saved to ~/.bcave/config.json"));
+  console.log(chalk.green("✓ API key saved."));
   process.exit(0);
 }
 
@@ -57,65 +57,21 @@ if (nonFlagArgs.length > 0) {
   initialPrompt = nonFlagArgs.join(" ");
 }
 
-// ─── UI Helpers ────────────────────────────────────────
-const DIM_LINE = chalk.dim("─".repeat(60));
-
-function box(content: string, color: (s: string) => string = chalk.dim): void {
-  const lines = content.split("\n");
-  const maxLen = Math.max(...lines.map((l) => stripAnsi(l).length));
-  const top = color("╭" + "─".repeat(maxLen + 2) + "╮");
-  const bottom = color("╰" + "─".repeat(maxLen + 2) + "╯");
-  console.log("  " + top);
-  for (const line of lines) {
-    const pad = " ".repeat(maxLen - stripAnsi(line).length);
-    console.log("  " + color("│") + " " + line + pad + " " + color("│"));
-  }
-  console.log("  " + bottom);
-}
-
-function stripAnsi(s: string): string {
-  return s.replace(/\x1b\[[0-9;]*m/g, "");
-}
-
-// ─── Banner ────────────────────────────────────────────
-const BANNER = [
-  "",
-  chalk.cyan.bold(" ██████╗  ██████╗ █████╗ ██╗   ██╗███████╗") + "  " + chalk.blue.bold("  ██████╗ ██████╗ ██████╗ ███████╗"),
-  chalk.cyan.bold(" ██╔══██╗██╔════╝██╔══██╗██║   ██║██╔════╝") + "  " + chalk.blue.bold(" ██╔════╝██╔═══██╗██╔══██╗██╔════╝"),
-  chalk.cyan.bold(" ██████╔╝██║     ███████║██║   ██║█████╗  ") + "  " + chalk.blue.bold(" ██║     ██║   ██║██║  ██║█████╗  "),
-  chalk.cyan.bold(" ██╔══██╗██║     ██╔══██║╚██╗ ██╔╝██╔══╝  ") + "  " + chalk.blue.bold(" ██║     ██║   ██║██║  ██║██╔══╝  "),
-  chalk.cyan.bold(" ██████╔╝╚██████╗██║  ██║ ╚████╔╝ ███████╗") + "  " + chalk.blue.bold(" ╚██████╗╚██████╔╝██████╔╝███████╗"),
-  chalk.cyan.bold(" ╚═════╝  ╚═════╝╚═╝  ╚═╝  ╚═══╝  ╚══════╝") + "  " + chalk.blue.bold("  ╚═════╝ ╚═════╝ ╚═════╝ ╚══════╝"),
-  "",
-  "  " + chalk.white.bold("v0.1.0") + chalk.dim("  ·  ") + chalk.gray("OpenAI GPT-4 기반 코딩 에이전트"),
-  "",
-  "  " + chalk.dim("Shift+Tab") + chalk.dim(" 모드 전환") + chalk.dim("  ·  ") + chalk.dim("/help") + chalk.dim(" 명령어 확인") + chalk.dim("  ·  ") + chalk.dim("Ctrl+C") + chalk.dim(" 종료"),
-  "",
-].join("\n");
-
 // ─── Mode ──────────────────────────────────────────────
 const MODE_ORDER: PermissionMode[] = ["safe", "auto-approve", "yolo"];
 const MODE_INFO: Record<PermissionMode, { label: string; color: (s: string) => string; desc: string }> = {
-  safe: { label: " SAFE ", color: chalk.bgGreen.black, desc: "모든 작업 전 확인" },
-  "auto-approve": { label: " AUTO ", color: chalk.bgYellow.black, desc: "카테고리별 한 번 승인 후 자동" },
-  yolo: { label: " YOLO ", color: chalk.bgRed.white, desc: "확인 없이 모두 실행" },
+  safe: { label: "Safe mode", color: chalk.green, desc: "모든 작업 전 확인" },
+  "auto-approve": { label: "Auto mode", color: chalk.yellow, desc: "카테고리별 자동 승인" },
+  yolo: { label: "Yolo mode", color: chalk.red, desc: "확인 없이 실행" },
 };
-
-function printModeBadge(): void {
-  const info = MODE_INFO[mode];
-  console.log("  " + info.color(info.label) + " " + chalk.dim(info.desc) + chalk.dim("  ·  ") + chalk.dim(process.cwd()));
-  console.log("  " + DIM_LINE);
-  console.log("");
-}
 
 function cycleMode(): void {
   const idx = MODE_ORDER.indexOf(mode);
   mode = MODE_ORDER[(idx + 1) % MODE_ORDER.length];
   rebuildCM();
   const info = MODE_INFO[mode];
-  process.stdout.write("\r\x1b[K");
-  console.log("  " + info.color(info.label) + " " + chalk.dim(info.desc));
-  console.log("");
+  process.stdout.write("\r\x1b[2K");
+  console.log(info.color(`  → ${info.label}`) + chalk.dim(` — ${info.desc}`));
 }
 
 // ─── Slash Commands ────────────────────────────────────
@@ -123,15 +79,13 @@ const COMMANDS = [
   { name: "/help", desc: "도움말 표시" },
   { name: "/api-key", desc: "API 키 변경" },
   { name: "/reset", desc: "설정 초기화" },
-  { name: "/model", desc: "모델 변경 (예: /model gpt-4o-mini)" },
-  { name: "/mode", desc: "권한 모드 전환" },
+  { name: "/model", desc: "모델 변경" },
+  { name: "/mode", desc: "모드 전환" },
 ];
 
 function slashCompleter(line: string): [string[], string] {
   if (!line.startsWith("/")) return [[], line];
-  const matches = COMMANDS
-    .filter((c) => c.name.startsWith(line))
-    .map((c) => c.name);
+  const matches = COMMANDS.filter((c) => c.name.startsWith(line)).map((c) => c.name);
   return [matches, line];
 }
 
@@ -139,7 +93,6 @@ let lastSuggestionLines = 0;
 
 function clearSuggestions(): void {
   if (lastSuggestionLines > 0) {
-    // Save cursor, move to each suggestion line and erase it, restore cursor
     process.stdout.write("\x1b[s");
     for (let i = 0; i < lastSuggestionLines; i++) {
       process.stdout.write("\x1b[B\r\x1b[2K");
@@ -156,26 +109,22 @@ function showSuggestions(line: string): void {
   const matches = COMMANDS.filter((c) => c.name.startsWith(line));
   if (matches.length === 0 || (matches.length === 1 && matches[0].name === line)) return;
 
-  // Save cursor position
   process.stdout.write("\x1b[s");
-
-  // Move below prompt and write suggestions
   for (const cmd of matches) {
-    process.stdout.write("\n\r\x1b[2K" + chalk.dim("    ") + chalk.cyan(cmd.name.padEnd(14)) + chalk.dim(cmd.desc));
+    process.stdout.write("\n\r\x1b[2K" + chalk.dim("   " + cmd.name.padEnd(14) + cmd.desc));
   }
   lastSuggestionLines = matches.length;
-
-  // Restore cursor back to prompt
   process.stdout.write("\x1b[u");
 }
 
-// ─── Readline Setup ────────────────────────────────────
+// ─── Readline ──────────────────────────────────────────
 const rl = readline.createInterface({
   input: process.stdin,
   output: process.stdout,
   completer: slashCompleter,
 });
 
+// Shift+Tab: mode cycle
 process.stdin.on("keypress", (_str: string, key: readline.Key) => {
   if (key && key.name === "tab" && key.shift) {
     cycleMode();
@@ -184,15 +133,14 @@ process.stdin.on("keypress", (_str: string, key: readline.Key) => {
   }
 });
 
+// Live slash suggestions
 let currentLine = "";
 process.stdin.on("keypress", (_str: string, key2: readline.Key) => {
-  // Clear suggestions immediately on Enter before readline processes it
   if (key2 && key2.name === "return") {
     clearSuggestions();
     currentLine = "";
     return;
   }
-
   setImmediate(() => {
     const line = (rl as unknown as { line: string }).line ?? "";
     if (line !== currentLine) {
@@ -209,7 +157,9 @@ process.stdin.on("keypress", (_str: string, key2: readline.Key) => {
 function prompt(): void {
   currentLine = "";
   lastSuggestionLines = 0;
-  rl.question(chalk.green.bold("❯ "), (answer) => {
+  const modeInfo = MODE_INFO[mode];
+  const modeHint = modeInfo.color(`[${modeInfo.label}]`);
+  rl.question(`${modeHint} ${chalk.bold(">")} `, (answer) => {
     clearSuggestions();
     handleInput(answer);
   });
@@ -249,18 +199,14 @@ function rebuildCM(): void {
 async function setupApiKey(): Promise<void> {
   return new Promise((resolve) => {
     console.log("");
-    box(
-      chalk.cyan.bold("API 키 설정") + "\n" +
-      chalk.dim("키는 ~/.bcave/config.json 에 저장됩니다.") + "\n" +
-      chalk.dim("발급: https://platform.openai.com/api-keys"),
-      chalk.cyan
-    );
+    console.log(chalk.bold("  API 키를 입력해주세요."));
+    console.log(chalk.dim("  키는 ~/.bcave/config.json에 저장됩니다."));
     console.log("");
 
-    rl.question("  " + chalk.cyan("API Key ") + chalk.dim("▸ "), (key) => {
+    rl.question(chalk.dim("  API Key > "), (key) => {
       const trimmed = key.trim();
       if (!trimmed.startsWith("sk-")) {
-        console.log(chalk.red("  ✗ 올바른 OpenAI API 키가 아닙니다. (sk- 로 시작)"));
+        console.log(chalk.red("  올바른 API 키가 아닙니다 (sk- 로 시작해야 함)"));
         setupApiKey().then(resolve);
         return;
       }
@@ -277,68 +223,46 @@ async function setupApiKey(): Promise<void> {
 // ─── Command Handlers ──────────────────────────────────
 function showHelp(): void {
   console.log("");
-  console.log("  " + chalk.white.bold("명령어"));
-  console.log("  " + DIM_LINE);
+  console.log(chalk.bold("  Commands"));
   console.log("");
   for (const cmd of COMMANDS) {
-    console.log("  " + chalk.cyan.bold(cmd.name.padEnd(16)) + chalk.white(cmd.desc));
+    console.log("    " + chalk.cyan(cmd.name.padEnd(14)) + chalk.dim(cmd.desc));
   }
-  console.log("  " + chalk.cyan.bold("Shift+Tab".padEnd(16)) + chalk.white("권한 모드 전환"));
-  console.log("  " + chalk.cyan.bold("Tab".padEnd(16)) + chalk.white("명령어 자동 완성"));
-  console.log("  " + chalk.cyan.bold("Ctrl+C".padEnd(16)) + chalk.white("BCave 종료"));
-  console.log("");
-  console.log("  " + DIM_LINE);
+  console.log("    " + chalk.cyan("Shift+Tab".padEnd(14)) + chalk.dim("모드 전환"));
+  console.log("    " + chalk.cyan("Tab".padEnd(14)) + chalk.dim("명령어 자동 완성"));
+  console.log("    " + chalk.cyan("Ctrl+C".padEnd(14)) + chalk.dim("종료"));
   console.log("");
 }
 
 async function handleSlashCommand(text: string): Promise<boolean> {
   const trimmed = text.trim();
 
-  if (trimmed === "/help") {
-    showHelp();
-    return true;
-  }
+  if (trimmed === "/help") { showHelp(); return true; }
 
-  if (trimmed === "/api-key") {
-    await setupApiKey();
-    return true;
-  }
+  if (trimmed === "/api-key") { await setupApiKey(); return true; }
 
   if (trimmed === "/reset") {
-    const configDir = getConfigDir();
-    const configPath = `${configDir}/config.json`;
-    if (fs.existsSync(configPath)) {
-      fs.unlinkSync(configPath);
-    }
-    console.log(chalk.green("  ✓ 설정이 초기화되었습니다. BCave를 다시 시작해주세요."));
+    const configPath = `${getConfigDir()}/config.json`;
+    if (fs.existsSync(configPath)) fs.unlinkSync(configPath);
+    console.log(chalk.green("  ✓ 설정 초기화 완료. 다시 시작해주세요."));
     process.exit(0);
   }
 
   if (trimmed.startsWith("/model ")) {
     const newModel = trimmed.slice(7).trim();
-    if (!newModel) {
-      console.log(chalk.yellow("  사용법: /model <모델명> (예: /model gpt-4o-mini)"));
-      return true;
-    }
+    if (!newModel) { console.log(chalk.dim("  사용법: /model gpt-4o-mini")); return true; }
     saveConfig({ model: newModel });
     config = loadConfig();
     rebuildCM();
-    console.log(chalk.green(`  ✓ 모델: ${chalk.bold(newModel)}`));
-    console.log("");
+    console.log(chalk.green(`  ✓ model → ${newModel}`));
     return true;
   }
 
-  if (trimmed === "/mode") {
-    cycleMode();
-    return true;
-  }
+  if (trimmed === "/mode") { cycleMode(); return true; }
 
-  // Only treat as unknown command if it matches a slash-command pattern
-  // (single word starting with /, not a file path like /users/foo)
-  if (trimmed.startsWith("/") && !trimmed.startsWith("//") && /^\/[a-z-]+$/i.test(trimmed.split(" ")[0]) && !trimmed.includes("/", 1)) {
-    console.log(chalk.yellow(`  ✗ 알 수 없는 명령어: ${trimmed}`));
-    console.log(chalk.dim("    /help 로 사용 가능한 명령어를 확인하세요."));
-    console.log("");
+  // Only treat as unknown command if it looks like a slash command, not a file path
+  if (trimmed.startsWith("/") && /^\/[a-z-]+$/i.test(trimmed.split(" ")[0]) && !trimmed.includes("/", 1)) {
+    console.log(chalk.dim(`  알 수 없는 명령어: ${trimmed} — /help 참고`));
     return true;
   }
 
@@ -347,68 +271,68 @@ async function handleSlashCommand(text: string): Promise<boolean> {
 
 // ─── Agent Events ──────────────────────────────────────
 async function processAgentEvents(gen: AsyncGenerator<AgentEvent>): Promise<void> {
+  let thinkingCleared = false;
+
   for await (const event of gen) {
+    // Clear "thinking" indicator on first output
+    if (!thinkingCleared) {
+      process.stdout.write("\x1b[A\r\x1b[2K");
+      thinkingCleared = true;
+    }
+
     switch (event.type) {
       case "text":
-        // Clear "생각 중..." line
-        process.stdout.write("\x1b[A\x1b[2K");
         console.log("");
-        console.log("  " + chalk.cyan("┃ ") + chalk.cyan.bold("BCAVE"));
-        const textLines = event.content.split("\n");
-        for (const line of textLines) {
-          console.log("  " + chalk.cyan("┃ ") + line);
+        const lines = event.content.split("\n");
+        for (const line of lines) {
+          console.log("  " + line);
         }
-        console.log("  " + chalk.cyan("┃"));
         console.log("");
         break;
 
       case "tool_call": {
         const req = event.request;
-        console.log("  " + chalk.yellow("┃ ") + chalk.yellow.bold("⚡ 권한 요청"));
-        console.log("  " + chalk.yellow("┃ ") + chalk.bold(req.name) + chalk.dim(` (${req.category})`));
-        const argLines = JSON.stringify(req.args, null, 2).split("\n");
-        for (const line of argLines) {
-          console.log("  " + chalk.yellow("┃ ") + chalk.dim(line));
-        }
-        console.log("  " + chalk.yellow("┃"));
+        const argsStr = Object.entries(req.args)
+          .map(([k, v]) => `${k}=${typeof v === "string" && v.length > 60 ? v.slice(0, 60) + "…" : v}`)
+          .join(", ");
+
+        console.log("  " + chalk.dim("─"));
+        console.log("  " + chalk.yellow("⚡") + " " + chalk.bold(req.name) + chalk.dim(`(${argsStr})`));
 
         if (mode === "auto-approve") {
-          const answer = await askYesAlwaysNo("  " + chalk.yellow("┃ ") + chalk.yellow("[Y]es / [A]lways / [N]o: "));
-          if (answer === "no") {
-            cm!.rejectToolCall(req.id);
-          } else {
-            cm!.approveToolCall(req.id);
-          }
+          const answer = await askYesAlwaysNo("  " + chalk.dim("Allow? ") + chalk.dim("[Y/a/n] "));
+          if (answer === "no") { cm!.rejectToolCall(req.id); }
+          else { cm!.approveToolCall(req.id); }
         } else {
-          const approved = await askYesNo("  " + chalk.yellow("┃ ") + chalk.yellow("[Y]es / [N]o: "));
-          if (approved) {
-            cm!.approveToolCall(req.id);
-          } else {
-            cm!.rejectToolCall(req.id);
-          }
+          const approved = await askYesNo("  " + chalk.dim("Allow? ") + chalk.dim("[Y/n] "));
+          if (approved) { cm!.approveToolCall(req.id); }
+          else { cm!.rejectToolCall(req.id); }
         }
-        console.log("");
         break;
       }
 
-      case "tool_result":
-        console.log("  " + chalk.dim("┃ ") + chalk.dim("⚙ " + event.name));
-        const resultPreview = event.result.length > 500
-          ? event.result.slice(0, 500) + "\n..."
+      case "tool_result": {
+        const preview = event.result.length > 300
+          ? event.result.slice(0, 300) + "…"
           : event.result;
-        const resultLines = resultPreview.split("\n");
-        for (const line of resultLines.slice(0, 10)) {
-          console.log("  " + chalk.dim("┃ " + line));
+        const rLines = preview.split("\n");
+        if (rLines.length <= 5) {
+          for (const l of rLines) {
+            console.log("  " + chalk.dim(l));
+          }
+        } else {
+          for (const l of rLines.slice(0, 4)) {
+            console.log("  " + chalk.dim(l));
+          }
+          console.log("  " + chalk.dim(`… (${rLines.length - 4} more lines)`));
         }
-        if (resultLines.length > 10) {
-          console.log("  " + chalk.dim("┃ ... (" + (resultLines.length - 10) + " more lines)"));
-        }
-        console.log("");
+        console.log("  " + chalk.dim("─"));
         break;
+      }
 
       case "error":
-        console.log("  " + chalk.red("┃ ") + chalk.red.bold("✗ Error"));
-        console.log("  " + chalk.red("┃ ") + event.message);
+        console.log("");
+        console.log("  " + chalk.red("✗ " + event.message));
         console.log("");
         break;
 
@@ -418,42 +342,58 @@ async function processAgentEvents(gen: AsyncGenerator<AgentEvent>): Promise<void
   }
 }
 
-// ─── Main Input Handler ────────────────────────────────
+// ─── Main Input ────────────────────────────────────────
 async function handleInput(text: string): Promise<void> {
   const trimmed = text.trim();
-  if (!trimmed) {
-    prompt();
-    return;
-  }
+  if (!trimmed) { prompt(); return; }
 
-  const wasCommand = await handleSlashCommand(trimmed);
-  if (wasCommand) {
-    prompt();
-    return;
-  }
+  if (await handleSlashCommand(trimmed)) { prompt(); return; }
 
   if (!cm) {
-    console.log(chalk.yellow("  API 키가 설정되지 않았습니다. /api-key 로 설정해주세요."));
+    console.log(chalk.dim("  API 키가 없습니다. /api-key 로 설정하세요."));
     prompt();
     return;
   }
 
-  console.log("");
-  console.log("  " + chalk.green("┃ ") + chalk.green.bold("YOU"));
-  console.log("  " + chalk.green("┃ ") + trimmed);
-  console.log("  " + chalk.green("┃"));
-  console.log("");
-  console.log(chalk.cyan("  ⠋ 생각 중..."));
+  console.log(chalk.dim("  ⏳ thinking…"));
 
   const gen = cm.run(trimmed);
   await processAgentEvents(gen);
   prompt();
 }
 
-// ─── Main ──────────────────────────────────────────────
+// ─── Banner & Start ────────────────────────────────────
 async function main(): Promise<void> {
   console.clear();
-  console.log(BANNER);
+  console.log("");
+  console.log(
+    chalk.cyan.bold(" ██████╗  ██████╗ █████╗ ██╗   ██╗███████╗") + "  " +
+    chalk.blue.bold("  ██████╗ ██████╗ ██████╗ ███████╗")
+  );
+  console.log(
+    chalk.cyan.bold(" ██╔══██╗██╔════╝██╔══██╗██║   ██║██╔════╝") + "  " +
+    chalk.blue.bold(" ██╔════╝██╔═══██╗██╔══██╗██╔════╝")
+  );
+  console.log(
+    chalk.cyan.bold(" ██████╔╝██║     ███████║██║   ██║█████╗  ") + "  " +
+    chalk.blue.bold(" ██║     ██║   ██║██║  ██║█████╗  ")
+  );
+  console.log(
+    chalk.cyan.bold(" ██╔══██╗██║     ██╔══██║╚██╗ ██╔╝██╔══╝  ") + "  " +
+    chalk.blue.bold(" ██║     ██║   ██║██║  ██║██╔══╝  ")
+  );
+  console.log(
+    chalk.cyan.bold(" ██████╔╝╚██████╗██║  ██║ ╚████╔╝ ███████╗") + "  " +
+    chalk.blue.bold(" ╚██████╗╚██████╔╝██████╔╝███████╗")
+  );
+  console.log(
+    chalk.cyan.bold(" ╚═════╝  ╚═════╝╚═╝  ╚═╝  ╚═══╝  ╚══════╝") + "  " +
+    chalk.blue.bold("  ╚═════╝ ╚═════╝ ╚═════╝ ╚══════╝")
+  );
+  console.log("");
+  console.log("  " + chalk.dim(`v0.1.0  ·  ${config.model}  ·  ${process.cwd()}`));
+  console.log("  " + chalk.dim("Shift+Tab 모드 전환  ·  /help 명령어  ·  Ctrl+C 종료"));
+  console.log("");
 
   if (!config.apiKey) {
     await setupApiKey();
@@ -461,10 +401,8 @@ async function main(): Promise<void> {
     rebuildCM();
   }
 
-  printModeBadge();
-
   if (mode === "yolo") {
-    console.log("  " + chalk.bgRed.white(" ⚠ ") + " " + chalk.red("모든 권한 확인이 비활성화되었습니다."));
+    console.log("  " + chalk.red("⚠ 모든 권한 확인이 비활성화되었습니다."));
     console.log("");
   }
 
@@ -476,8 +414,7 @@ async function main(): Promise<void> {
 }
 
 rl.on("close", () => {
-  console.log("");
-  console.log(chalk.dim("  Goodbye! 👋"));
+  console.log(chalk.dim("\n  Goodbye 👋\n"));
   process.exit(0);
 });
 
