@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Text, Box, useInput, useApp } from "ink";
 import TextInput from "ink-text-input";
+import fs from "node:fs";
 import { ConversationManager, type AgentEvent, type ToolCallRequest } from "../agent/conversation.js";
 import { PermissionManager, type PermissionMode } from "../agent/permissions.js";
 import type { BcaveConfig } from "../config/config.js";
-import { loadConfig } from "../config/config.js";
+import { loadConfig, saveConfig, getConfigDir } from "../config/config.js";
 import { MessageOutput } from "./components/MessageOutput.js";
 import { PermissionPrompt } from "./components/PermissionPrompt.js";
 import { Banner } from "./components/Banner.js";
@@ -23,7 +24,7 @@ interface Message {
   toolName?: string;
 }
 
-type Screen = "welcome" | "chat" | "config";
+type Screen = "welcome" | "chat" | "apikey";
 
 export function App({ config, mode, initialPrompt, hasApiKey }: Props) {
   const { exit } = useApp();
@@ -64,23 +65,122 @@ export function App({ config, mode, initialPrompt, hasApiKey }: Props) {
     setIsProcessing(false);
   }, []);
 
+  const showHelp = useCallback(() => {
+    const helpText = [
+      "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+      "  BCave CODE — 사용 가능한 명령어",
+      "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+      "",
+      "  /help          이 도움말을 표시합니다",
+      "  /api-key       API 키를 변경합니다",
+      "  /reset         모든 설정을 초기화합니다",
+      "  /model <name>  모델을 변경합니다 (예: /model gpt-4o-mini)",
+      "  /mode          현재 권한 모드를 표시합니다",
+      "  Ctrl+C         BCave를 종료합니다",
+      "",
+      "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+    ].join("\n");
+    setMessages((prev) => [...prev, { role: "assistant", content: helpText }]);
+  }, []);
+
+  const handleSlashCommand = useCallback(
+    (text: string): boolean => {
+      const trimmed = text.trim();
+
+      if (trimmed === "/help") {
+        showHelp();
+        return true;
+      }
+
+      if (trimmed === "/api-key") {
+        setScreen("apikey");
+        return true;
+      }
+
+      if (trimmed === "/reset") {
+        const configDir = getConfigDir();
+        const configPath = `${configDir}/config.json`;
+        if (fs.existsSync(configPath)) {
+          fs.unlinkSync(configPath);
+        }
+        setMessages((prev) => [
+          ...prev,
+          { role: "assistant", content: "설정이 초기화되었습니다. BCave를 다시 시작해주세요." },
+        ]);
+        setCm(null);
+        return true;
+      }
+
+      if (trimmed.startsWith("/model ")) {
+        const newModel = trimmed.slice(7).trim();
+        if (!newModel) {
+          setMessages((prev) => [
+            ...prev,
+            { role: "assistant", content: "사용법: /model <모델명> (예: /model gpt-4o-mini)" },
+          ]);
+          return true;
+        }
+        saveConfig({ model: newModel });
+        const newConfig = loadConfig();
+        setActiveConfig(newConfig);
+        const pm = new PermissionManager(mode);
+        const newCm = new ConversationManager(newConfig, pm, process.cwd());
+        setCm(newCm);
+        setMessages((prev) => [
+          ...prev,
+          { role: "assistant", content: `모델이 ${newModel}(으)로 변경되었습니다.` },
+        ]);
+        return true;
+      }
+
+      if (trimmed === "/mode") {
+        const modeLabels: Record<PermissionMode, string> = {
+          safe: "Safe — 모든 작업 전 확인",
+          "auto-approve": "Auto-approve — 카테고리별 한 번 승인 후 자동",
+          yolo: "YOLO — 확인 없이 모두 실행",
+        };
+        setMessages((prev) => [
+          ...prev,
+          { role: "assistant", content: `현재 권한 모드: ${modeLabels[mode]}` },
+        ]);
+        return true;
+      }
+
+      if (trimmed.startsWith("/")) {
+        setMessages((prev) => [
+          ...prev,
+          { role: "assistant", content: `알 수 없는 명령어: ${trimmed}\n/help 로 사용 가능한 명령어를 확인하세요.` },
+        ]);
+        return true;
+      }
+
+      return false;
+    },
+    [mode, showHelp]
+  );
+
   const handleSubmit = useCallback(
     (text: string) => {
-      if (!text.trim() || isProcessing || !cm) return;
+      if (!text.trim() || isProcessing) return;
 
-      if (text.trim() === "/config") {
-        setInput("");
-        setScreen("config");
+      setInput("");
+
+      if (handleSlashCommand(text)) return;
+
+      if (!cm) {
+        setMessages((prev) => [
+          ...prev,
+          { role: "assistant", content: "API 키가 설정되지 않았습니다. /api-key 로 설정해주세요." },
+        ]);
         return;
       }
 
       setMessages((prev) => [...prev, { role: "user", content: text }]);
-      setInput("");
       setIsProcessing(true);
       const gen = cm.run(text);
       processEvents(gen);
     },
-    [cm, isProcessing, processEvents]
+    [cm, isProcessing, processEvents, handleSlashCommand]
   );
 
   useEffect(() => {
@@ -128,7 +228,7 @@ export function App({ config, mode, initialPrompt, hasApiKey }: Props) {
     [mode]
   );
 
-  // Welcome / API key setup screen
+  // Welcome screen (no API key)
   if (screen === "welcome") {
     return (
       <Box flexDirection="column" padding={1}>
@@ -138,17 +238,12 @@ export function App({ config, mode, initialPrompt, hasApiKey }: Props) {
     );
   }
 
-  // Config change screen (triggered by /config command)
-  if (screen === "config") {
+  // API key change screen
+  if (screen === "apikey") {
     return (
       <Box flexDirection="column" padding={1}>
-        <Banner compact />
-        <ApiKeySetup
-          onComplete={(apiKey) => {
-            handleApiKeyComplete(apiKey);
-            setScreen("chat");
-          }}
-        />
+        <Banner />
+        <ApiKeySetup onComplete={handleApiKeyComplete} />
       </Box>
     );
   }
@@ -164,14 +259,13 @@ export function App({ config, mode, initialPrompt, hasApiKey }: Props) {
   // Chat screen
   return (
     <Box flexDirection="column" padding={1}>
-      <Banner compact />
+      <Banner />
 
       <Box marginBottom={1} flexDirection="row" gap={2}>
         <Box borderStyle="round" borderColor={badge.color} paddingX={1}>
           <Text color={badge.color as "green" | "yellow" | "red"} bold>{badge.label}</Text>
         </Box>
         <Text dimColor>{process.cwd()}</Text>
-        <Text dimColor>  /config — API 키 변경</Text>
       </Box>
 
       {messages.map((msg, i) => (
