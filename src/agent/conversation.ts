@@ -92,11 +92,16 @@ export class ConversationManager {
 
           if (this.permissions.needsApproval(category)) {
             const request: ToolCallRequest = { id: toolCall.id, name, args, category };
-            yield { type: "tool_call", request };
 
-            const approved = await new Promise<boolean>((resolve) => {
+            // Register pending approval BEFORE yielding, so approveToolCall/rejectToolCall
+            // can resolve it even if called before we await
+            const approvalPromise = new Promise<boolean>((resolve) => {
               this.pendingApprovals.set(toolCall.id, { resolve });
             });
+
+            yield { type: "tool_call", request };
+
+            const approved = await approvalPromise;
 
             if (!approved) {
               this.messages.push({
