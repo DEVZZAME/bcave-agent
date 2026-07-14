@@ -32,7 +32,7 @@ if (args.includes("--dangerously-skip-permissions")) {
 
 if (args.includes("--help") || args.includes("-h")) {
   console.log(`
-  ${chalk.cyan.bold("BCave CODE")} — OpenAI GPT-4 기반 코딩 에이전트
+  ${chalk.cyan.bold("BCave CODE")} — 사내 AI 코딩 에이전트 (HUB 로그인)
 
   ${chalk.bold("Usage")}
     $ bcave [prompt]

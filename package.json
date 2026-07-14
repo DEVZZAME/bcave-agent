@@ -1,11 +1,14 @@
 {
   "name": "@bcave/cli",
   "version": "0.1.0",
-  "description": "OpenAI GPT-4 기반 로컬 코딩 에이전트 CLI",
+  "description": "사내 HUB 로그인 기반 AI 코딩 에이전트 CLI",
   "type": "module",
   "bin": {
     "bcave": "./dist/cli/index.js"
   },
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
