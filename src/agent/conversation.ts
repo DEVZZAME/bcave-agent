@@ -73,11 +73,41 @@ export class ConversationManager {
     }
   }
 
+  /**
+   * 대화 히스토리가 커지면 오래된 턴을 버려 모델 컨텍스트 한도 초과를 막는다.
+   * tool_call/tool_result 쌍이 깨지지 않도록 반드시 user 메시지 경계에서 자른다.
+   */
+  private trimHistory(): void {
+    const BUDGET = 250_000; // 문자 수 (~6만 토큰) — 모델 한도보다 훨씬 아래로 유지
+    const msgs = this.messages;
+    if (msgs.length <= 2) return;
+    const size = (m: ChatCompletionMessageParam): number => JSON.stringify(m).length;
+    const total = msgs.reduce((s, m) => s + size(m), 0);
+    if (total <= BUDGET) return;
+
+    const system = msgs[0];
+    const sysSize = size(system);
+    const userIdxs: number[] = [];
+    for (let i = 1; i < msgs.length; i++) {
+      if ((msgs[i] as { role: string }).role === "user") userIdxs.push(i);
+    }
+    if (userIdxs.length === 0) return; // 안전하게 자를 경계가 없으면 그대로 둔다
+
+    let chosen = userIdxs[userIdxs.length - 1]; // 최소한 마지막 턴은 유지
+    for (const idx of userIdxs) {
+      let s = sysSize;
+      for (let j = idx; j < msgs.length; j++) s += size(msgs[j]);
+      if (s <= BUDGET) { chosen = idx; break; }
+    }
+    this.messages = [system, ...msgs.slice(chosen)];
+  }
+
   async *run(userMessage: string): AsyncGenerator<AgentEvent> {
     this.messages.push({ role: "user", content: userMessage });
 
     try {
       while (true) {
+        this.trimHistory();
         const response = await chat(this.client, this.messages, this.config.model, {
           onAuthError: () => this.refreshSession(),
         });
