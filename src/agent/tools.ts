@@ -131,6 +131,20 @@ function truncate(text: string, max: number, why = "생략"): string {
   );
 }
 
+/** 텍스트로 보기 어려운 바이너리 데이터인지 판별 (NUL·제어문자·깨진문자 비율). */
+function looksBinary(text: string): boolean {
+  if (text.length === 0) return false;
+  if (text.includes("\u0000")) return true;
+  const sample = text.slice(0, 4000);
+  let bad = 0;
+  for (let i = 0; i < sample.length; i++) {
+    const c = sample.charCodeAt(i);
+    // 탭(9)·LF(10)·CR(13) 외의 제어문자, 그리고 대체문자(U+FFFD)를 이상치로 카운트
+    if ((c < 9 || (c > 13 && c < 32)) || c === 0xfffd) bad++;
+  }
+  return bad / sample.length > 0.1;
+}
+
 export async function executeTool(
   name: string,
   args: Record<string, unknown>,
@@ -140,16 +154,24 @@ export async function executeTool(
     switch (name) {
       case "read_file": {
         const filePath = path.resolve(cwd, args.path as string);
+        let content: string;
+        let partial = false;
         // 거대 파일은 통째로 메모리에 올리지 않고 앞부분만 읽는다.
         if (fs.statSync(filePath).size > 2_000_000) {
           const fd = fs.openSync(filePath, "r");
           const buf = Buffer.alloc(MAX_READ_CHARS);
           const n = fs.readSync(fd, buf, 0, MAX_READ_CHARS, 0);
           fs.closeSync(fd);
-          return truncate(buf.toString("utf-8", 0, n), MAX_READ_CHARS, "파일이 큼(앞부분만)");
+          content = buf.toString("utf-8", 0, n);
+          partial = true;
+        } else {
+          content = fs.readFileSync(filePath, "utf-8");
         }
-        const content = fs.readFileSync(filePath, "utf-8");
-        return truncate(content, MAX_READ_CHARS, "파일이 큼");
+        // 엑셀(.xlsx)·이미지 등 바이너리는 원문을 내보내지 않는다 (화면 깨짐·토큰 낭비 방지).
+        if (looksBinary(content)) {
+          return `[바이너리 파일이라 텍스트로 열 수 없습니다: ${args.path}\n(엑셀/이미지/압축 파일 등은 내용을 직접 읽을 수 없습니다. 필요하면 어떤 데이터인지 사용자에게 물어보거나 적절한 도구/라이브러리로 처리하세요.)]`;
+        }
+        return truncate(content, MAX_READ_CHARS, partial ? "파일이 큼(앞부분만)" : "파일이 큼");
       }
       case "write_file": {
         const filePath = path.resolve(cwd, args.path as string);
@@ -212,7 +234,10 @@ export async function executeTool(
           child.stdout?.on("data", (data) => (stdout += data));
           child.stderr?.on("data", (data) => (stderr += data));
           child.on("close", (code) => {
-            const out = stdout + (stderr ? `\nSTDERR:\n${stderr}` : "");
+            let out = stdout + (stderr ? `\nSTDERR:\n${stderr}` : "");
+            if (looksBinary(out)) {
+              out = "[명령 출력에 바이너리 데이터가 섞여 있어 텍스트로 표시하지 않았습니다]";
+            }
             resolve(code !== 0 ? `Exit code ${code}\n${out}` : out);
           });
           child.on("error", (err) => resolve(`Error: ${err.message}`));
