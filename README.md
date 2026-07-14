@@ -18,185 +18,117 @@
 </h1>
 
 <p align="center">
-  <strong>사내 AI 코딩 에이전트</strong><br>
-  <sub>터미널에서 AI에게 지시하면 파일을 읽고, 쓰고, 명령을 실행합니다.</sub><br>
-  <sub>API 키 없이 <b>사내 계정 로그인</b>만으로 사용합니다.</sub>
+  <strong>사내 AI 코딩 에이전트</strong> · 사내 계정 로그인만으로 사용
 </p>
 
 ---
 
-## 필요 조건
+# 설치
 
-| 항목 | 내용 |
-|---|---|
-| **Node.js** | 18 이상 (없으면 아래 1단계에서 설치) |
-| **Git** | 설치에 필요 (Windows는 2단계에서 설치) |
-| **사내 계정** | HUB 회원가입 + `BCAVE_CODE` 접근 승인 |
+본인 컴퓨터에 맞춰 따라오세요 → **[🪟 Windows](#-windows)** · **[🍎 Mac](#-mac)**
 
-> **Windows**: 아래 **방법 A(npm)** 를 쓰면 **cmd·PowerShell·Git Bash 어디서나** 됩니다.
+<br>
 
----
+## 🪟 Windows
 
-## 설치 — 처음이신 분도 순서대로 따라 하시면 됩니다
-
-### 1단계. Node.js 설치
-
-bcave는 Node.js 위에서 동작합니다. 먼저 설치돼 있는지 확인하세요.
-터미널(Mac은 **터미널.app**, Windows는 **PowerShell** 또는 **cmd**)에서:
-
-```bash
-node -v
+### 1. Node.js 있는지 확인
+시작 메뉴에서 **PowerShell** 을 열고 입력:
 ```
+node --version
+```
+- `v20.x.x` 처럼 **v로 시작하는 숫자**가 나오면 → **3번으로**
+- 빨간 에러가 나거나 아무것도 안 나오면 → **2번으로**
 
-- `v18...` 이상이 보이면 → 이미 설치됨. **2단계로.**
-- `command not found` 가 보이면 → 설치:
-  - **Windows / Mac 공통**: https://nodejs.org 에서 **LTS** 다운로드 → 설치 마법사("다음" 계속) → 완료
-  - **Mac(Homebrew)**: `brew install node`
+### 2. Node.js 설치
+https://nodejs.org 접속 → 큰 **LTS** 버튼으로 다운로드 → 설치("Next" 계속) →
+**PowerShell을 새로 열고** `node --version` 다시 확인 (이제 버전이 나옵니다)
 
-설치 후 터미널을 **새로 열고** `node -v` 로 다시 확인하세요.
+### 3. Git 있는지 확인
+```
+git --version
+```
+- 버전이 나오면 → **5번으로**
+- 안 나오면 → **4번으로**
 
-### 2단계. Git 설치
+### 4. Git 설치
+https://git-scm.com/download/win 에서 다운로드 → 설치("Next" 계속) → **PowerShell을 새로** 열기
 
-설치 과정에서 GitHub 저장소를 내려받기 위해 **Git**이 필요합니다.
-
-- **Windows**: https://git-scm.com/download/win 에서 다운로드 → 설치(기본 옵션 그대로). 설치하면 cmd·PowerShell에서 `git` 사용 가능해지고, Git Bash도 함께 깔립니다.
-- **Mac**: 보통 이미 설치돼 있습니다 (`git --version` 확인). 없으면 `xcode-select --install` 또는 `brew install git`.
-
-### 3단계. bcave 설치 — 운영체제에 맞는 **한 줄**
-
-**🪟 Windows — PowerShell 에서** (설치 후 cmd·PowerShell 모두 사용 가능)
-
-시작 메뉴에서 **"PowerShell"** 실행 → 아래 한 줄 붙여넣고 Enter:
-
+### 5. bcave 설치
+PowerShell에 아래 한 줄을 붙여넣고 Enter (2~3분 걸립니다):
 ```powershell
 irm https://raw.githubusercontent.com/DEVZZAME/bcave-code/master/install.ps1 | iex
 ```
 
-**🍎 Mac / Linux (또는 Windows Git Bash) — 터미널에서**
+### 6. 실행
+**새 PowerShell(또는 cmd) 창**을 열고:
+```
+bcave
+```
 
+<br>
+
+## 🍎 Mac
+
+### 1. Node.js 있는지 확인
+**터미널**(Spotlight에서 `터미널` 검색)을 열고 입력:
+```
+node --version
+```
+- `v20.x.x` 처럼 **v로 시작하는 숫자**가 나오면 → **3번으로**
+- `command not found` 가 나오면 → **2번으로**
+
+### 2. Node.js 설치
+https://nodejs.org 접속 → **LTS** 다운로드 → 설치 →
+**터미널을 새로 열고** `node --version` 다시 확인
+
+### 3. bcave 설치
+터미널에 아래 한 줄을 붙여넣고 Enter (2~3분 걸립니다):
 ```bash
 curl -s https://raw.githubusercontent.com/DEVZZAME/bcave-code/master/install.sh | bash
 ```
+> 중간에 "명령어 개발자 도구를 설치하시겠습니까?" 팝업이 뜨면 **설치**를 눌러주세요 (Git 설치).
 
-→ 설치가 끝나면 **터미널을 새로 열어주세요** (PATH 적용).
+### 4. 실행
+**터미널을 새로 열고**:
+```
+bcave
+```
 
-> **업데이트(최신 버전 받기)**: 위 설치 명령을 **다시 실행**하면 됩니다.
+---
 
-### 4단계. 접근 권한 받기 (최초 1회)
+# 처음 실행하면
 
-bcave는 **사내 HUB 계정**으로 로그인합니다. 아직 계정/권한이 없다면:
+1. **로그인 화면**이 뜹니다 → 사내 **이메일 / 비밀번호** 입력 _(비밀번호는 `*`로 표시)_
+2. 로그인 후 하고 싶은 걸 그냥 입력하세요. 예: `이 폴더 구조 설명해줘`
+3. 파일을 바꾸거나 명령을 실행하기 전 **`Allow? [Y/n]`** 로 물어봅니다 → `y` + Enter
+4. 한 번 로그인하면 계속 유지됩니다.
 
-1. 사내 HUB( http://3.36.247.93:3000 )에서 **회원가입**
-2. **BCAVE_CODE** 서비스 **접근 신청**
-3. 관리자 **승인** 후 사용 가능
-
+> 로그인이 안 되면 → 관리자에게 **BCAVE_CODE 사용 승인**을 요청하세요.
 > 계정/승인 문의: **AX팀 강한솔 대리**
 
 ---
 
-## 사용법
+# 자주 쓰는 명령
 
-터미널(Windows는 Git Bash)에서:
-
-```bash
-bcave
-```
-
-- 처음이면 **로그인 화면**이 뜹니다 → 사내 이메일/비밀번호 입력 (비밀번호는 `*`로 표시됩니다)
-- 로그인 후 하고 싶은 작업을 자연어로 입력하면, AI가 파일을 읽고·쓰고·명령을 실행합니다
-- 로그인은 **로그아웃 전까지 유지**됩니다 (매번 로그인 불필요)
-
-```
-──────────────────────────────────────────────────────────────
-Safe mode ~/my-project > 이 프로젝트에 테스트를 추가해줘
-
-  ⚡ read_file(path=src/index.ts)
-  Allow? [Y/n] y
-  ...
-  ⚡ write_file(path=tests/index.test.ts)
-  Allow? [Y/n] y
-
-  테스트 파일을 생성했습니다. `npm test`로 실행할 수 있습니다.
-──────────────────────────────────────────────────────────────
-Safe mode ~/my-project >
-```
-
----
-
-## 명령어
-
-대화 중 `/` 를 입력하면 명령어 선택 화면이 나타납니다.
+대화 중 `/` 를 입력하면 목록이 나옵니다.
 
 | 명령 | 설명 |
 |---|---|
-| `/login` | 사내 계정 로그인 |
+| `/model` | 모델 선택 |
+| `/usage` | 내 사용량 · 한도 확인 |
 | `/logout` | 로그아웃 |
-| `/model` | 모델 선택 (내 등급에서 사용 가능한 모델만 표시) |
-| `/usage` | 내 사용량 / 한도 확인 (일·주·월) |
-| `/mode` | 권한 모드 전환 |
-| `/help` | 도움말 |
-| `/reset` | 설정 초기화 |
+| `/help` | 전체 명령 보기 |
 
-| 단축키 | 동작 |
-|---|---|
-| `Shift+Tab` | 권한 모드 전환 |
-| `Ctrl+C` | 종료 |
+종료: **`Ctrl + C`**
 
 ---
 
-## 권한 모드
-
-`Shift+Tab` 또는 `/mode` 로 전환합니다.
-
-| 모드 | 설명 | 플래그 |
-|---|---|---|
-| 🟢 **Safe** | 모든 작업 전 확인 _(기본)_ | — |
-| 🟡 **Auto** | 카테고리별 한 번 승인 후 자동 | `--auto-approve` |
-| 🔴 **YOLO** | 확인 없이 모두 실행 | `--dangerously-skip-permissions` |
-
----
-
-## CLI 옵션
-
-```bash
-bcave                                  # 대화형 실행 (로그인 필요)
-bcave "이 코드 리뷰해줘"                 # 원샷 실행
-bcave login                            # 로그인
-bcave logout                           # 로그아웃
-bcave --model gpt-4o-mini "테스트 추가"  # 모델 지정
-bcave --auto-approve "리팩터링 해줘"      # Auto 모드
-bcave --hub-url http://호스트:3000       # HUB 주소 지정 (기본값 내장)
-```
-
----
-
-## 문제 해결 (FAQ)
+# 안 될 때
 
 | 증상 | 해결 |
 |---|---|
-| `command not found: bcave` | 터미널을 **새로 열기**. 그래도 안 되면 3단계 재설치 |
-| Windows에서 `bcave` 안 됨 | 터미널을 **새로** 열기. PowerShell 설치(`install.ps1`)를 썼는지 확인 |
-| 설치 중 `git: command not found` / `git 없음` | 2단계 **Git 설치** 필요 |
-| PowerShell 설치가 막힘(실행 정책) | `irm ... | iex` 방식은 정책 무관하게 동작합니다. 그래도 막히면 관리자에게 문의 |
-| `Cannot find package 'chalk'` | 설치가 깨진 것 → 3단계 재설치 |
-| 로그인이 안 됨 | `BCAVE_CODE` 승인이 났는지 관리자에게 확인 |
-| "사용 권한이 없습니다" | HUB에서 BCAVE_CODE 접근 신청 → 관리자 승인 필요 |
-| "한도를 모두 사용했습니다" | `/usage` 로 한도 확인, 필요 시 관리자에게 상향 요청 |
+| `bcave` 명령을 못 찾음 | 터미널을 **완전히 닫고 새로** 열기 |
+| 설치 중 에러 | 설치 명령을 **다시 실행** |
+| 로그인이 안 됨 | 관리자에게 **BCAVE_CODE 승인** 요청 |
 
----
-
-## 설정 파일
-
-`~/.bcave/config.json` (로그인 시 자동 생성/갱신)
-
-| 필드 | 설명 |
-|---|---|
-| `hubUrl` | 사내 HUB 주소 (기본값 내장) |
-| `accessToken` / `refreshToken` | 로그인 토큰 (자동 관리, 직접 수정 불필요) |
-| `model` | 현재 선택한 모델 |
-
----
-
-<p align="center">
-  <sub>UNLICENSED — 사내 전용</sub>
-</p>
+<p align="center"><sub>UNLICENSED — 사내 전용</sub></p>
