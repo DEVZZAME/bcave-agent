@@ -6,9 +6,6 @@
   "bin": {
     "bcave": "./dist/cli/index.js"
   },
-  "files": [
-    "dist"
-  ],
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
