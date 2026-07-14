@@ -6,6 +6,7 @@ import { ConversationManager, type AgentEvent, type ToolCallRequest } from "../a
 import { PermissionManager, type PermissionMode } from "../agent/permissions.js";
 import type { BcaveConfig } from "../config/config.js";
 import { hubLogin, hubLogout, hubListModels, hubUsage, type HubModel } from "../auth/hub.js";
+import { KICKSTART_COMMANDS, findKickstartCommand } from "../agent/commands.js";
 import fs from "node:fs";
 
 // ─── CLI Args ──────────────────────────────────────────
@@ -85,12 +86,15 @@ function cycleMode(): void {
 
 // ─── Slash Commands ────────────────────────────────────
 const COMMANDS = [
-  { name: "/help", desc: "도움말 표시" },
-  { name: "/login", desc: "사내 계정 로그인" },
-  { name: "/logout", desc: "로그아웃" },
+  // 초보자 온보딩 (프롬프트 커맨드)
+  ...KICKSTART_COMMANDS.map((c) => ({ name: c.name, desc: c.desc })),
+  // 유틸리티
   { name: "/model", desc: "모델 선택" },
   { name: "/usage", desc: "사용량/한도 확인" },
+  { name: "/login", desc: "사내 계정 로그인" },
+  { name: "/logout", desc: "로그아웃" },
   { name: "/mode", desc: "모드 전환" },
+  { name: "/help", desc: "도움말 표시" },
   { name: "/reset", desc: "설정 초기화" },
 ];
 
@@ -523,6 +527,18 @@ async function handleSlashCommand(text: string): Promise<boolean> {
   }
 
   if (trimmed === "/mode") { cycleMode(); return true; }
+
+  // 초보자 온보딩 커맨드 — 해당 프롬프트를 에이전트에 주입해 가이드 시작
+  const kick = findKickstartCommand(trimmed);
+  if (kick) {
+    if (!cm) {
+      console.log(chalk.dim("  로그인이 필요합니다. /login 으로 사내 계정에 로그인하세요."));
+      return true;
+    }
+    console.log(chalk.dim("  ⏳ thinking…"));
+    await processAgentEvents(cm.run(kick.prompt));
+    return true;
+  }
 
   // Only treat as unknown command if it looks like a slash command, not a file path
   if (trimmed.startsWith("/") && /^\/[a-z-]+$/i.test(trimmed.split(" ")[0]) && !trimmed.includes("/", 1)) {
