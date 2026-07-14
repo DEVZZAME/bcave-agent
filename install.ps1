@@ -11,6 +11,10 @@ Write-Host "  ║        BCave CLI 설치 (Windows)       ║" -ForegroundColor 
 Write-Host "  ╚══════════════════════════════════════╝" -ForegroundColor Cyan
 Write-Host ""
 
+# --- 이 세션(프로세스)에 한해 스크립트 실행 허용 (실패해도 무시) ---
+#   기업 GPO 로 정책이 잠긴 경우엔 아래 npm.cmd 호출이 정책을 우회한다.
+try { Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force -ErrorAction Stop } catch {}
+
 # --- Node.js 확인 ---
 if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
   Write-Host "  X Node.js 가 설치되어 있지 않습니다." -ForegroundColor Red
@@ -48,11 +52,12 @@ if ($LASTEXITCODE -ne 0) { Write-Host "  X git clone 실패" -ForegroundColor Re
 # --- 설치 + 빌드 ---
 Push-Location $InstallDir
 try {
+  # npm(=npm.ps1) 은 PowerShell 실행정책에 막힐 수 있으므로 npm.cmd(배치)를 호출한다.
   Write-Host "  의존성 설치 중... (수 분 소요될 수 있습니다)"
-  npm install --silent --no-fund --no-audit
+  npm.cmd install --silent --no-fund --no-audit
   if ($LASTEXITCODE -ne 0) { Write-Host "  X npm install 실패" -ForegroundColor Red; return }
   Write-Host "  빌드 중..."
-  npm run build
+  npm.cmd run build
   if ($LASTEXITCODE -ne 0) { Write-Host "  X 빌드 실패" -ForegroundColor Red; return }
 } finally {
   Pop-Location
