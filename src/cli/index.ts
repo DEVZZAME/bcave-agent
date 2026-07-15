@@ -6,7 +6,6 @@ import { ConversationManager, type AgentEvent, type ToolCallRequest } from "../a
 import { PermissionManager, type PermissionMode } from "../agent/permissions.js";
 import type { BcaveConfig } from "../config/config.js";
 import { hubLogin, hubLogout, hubListModels, hubUsage, type HubModel } from "../auth/hub.js";
-import { KICKSTART_COMMANDS, findKickstartCommand } from "../agent/commands.js";
 import {
   runKickstart,
   showKickstart,
@@ -97,8 +96,6 @@ function cycleMode(): void {
 const COMMANDS = [
   // 요구사항 수집 마법사 (정적, 토큰 0)
   { name: "/kickstart", desc: "질문에 답하며 만들 것을 정리 (토큰 0)" },
-  // 초보자 온보딩 (프롬프트 커맨드)
-  ...KICKSTART_COMMANDS.map((c) => ({ name: c.name, desc: c.desc })),
   // 유틸리티
   { name: "/model", desc: "모델 선택" },
   { name: "/usage", desc: "사용량/한도 확인" },
@@ -707,27 +704,6 @@ async function handleSlashCommand(text: string): Promise<boolean> {
       outcome = await runKickstart(wizardIO, cwd);
     }
     if (outcome === "confirmed") await offerBuild(cwd);
-    return true;
-  }
-
-  // 초보자 온보딩 커맨드 — 해당 프롬프트를 에이전트에 주입해 가이드 시작
-  const kick = findKickstartCommand(trimmed);
-  if (kick) {
-    if (!cm) {
-      console.log(chalk.dim("  로그인이 필요합니다. /login 으로 사내 계정에 로그인하세요."));
-      return true;
-    }
-    // 첫 인사가 고정적인 커맨드는 LLM 호출 없이 즉시 출력(토큰·지연 절약).
-    // 프롬프트는 컨텍스트에만 넣고, 사용자가 답할 때부터 LLM 이 이어받는다.
-    if (kick.intro) {
-      console.log("");
-      for (const line of kick.intro.split("\n")) console.log("  " + line);
-      console.log("");
-      cm.seedTurn(kick.prompt, kick.intro);
-      return true;
-    }
-    console.log(chalk.dim("  ⏳ thinking…"));
-    await processAgentEvents(cm.run(kick.prompt));
     return true;
   }
 
