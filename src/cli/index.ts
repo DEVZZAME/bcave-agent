@@ -19,7 +19,7 @@ import fs from "node:fs";
 
 // ─── CLI Args ──────────────────────────────────────────
 const args = process.argv.slice(2);
-let mode: PermissionMode = "safe";
+let mode: PermissionMode = "auto-approve"; // 기본: Auto mode (카테고리별 자동 승인)
 let initialPrompt: string | undefined;
 
 const modelIdx = args.indexOf("--model");
@@ -35,6 +35,8 @@ if (hubIdx !== -1 && args[hubIdx + 1]) {
 
 if (args.includes("--dangerously-skip-permissions")) {
   mode = "yolo";
+} else if (args.includes("--safe")) {
+  mode = "safe";
 } else if (args.includes("--auto-approve")) {
   mode = "auto-approve";
 }
@@ -53,7 +55,8 @@ if (args.includes("--help") || args.includes("-h")) {
   ${chalk.bold("Options")}
     --hub-url <url>                    HUB 주소 지정 (예: http://hub.bcave.internal)
     --model <model>                    모델 변경 (기본: gpt-5.5)
-    --auto-approve                     카테고리별 한 번 승인 후 자동
+    --safe                             Safe mode (모든 작업 전 확인)
+    --auto-approve                     Auto mode: 카테고리별 자동 승인 (기본값)
     --dangerously-skip-permissions     모든 권한 확인 건너뛰기
 `);
   process.exit(0);
