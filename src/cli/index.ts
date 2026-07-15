@@ -292,9 +292,14 @@ function enterWorkInput(): void {
     if (buf.includes(0x1b)) {
       aborted = true;
       abortController?.abort(); // 진행 중인 API 요청 즉시 취소
+      stopSpinner();
+      process.stdout.write("  " + chalk.yellow("■ 중지 중…") + "\n");
     }
   };
   process.stdin.on("data", workRawListener);
+  // rl.pause() 로 명시적으로 멈춘 stdin 은 data 리스너를 추가해도 자동 재개되지 않는다.
+  // resume() 을 호출해야 ESC 바이트가 리스너로 흐른다.
+  try { process.stdin.resume(); } catch { /* noop */ }
 }
 function exitWorkInput(): void {
   if (workRawListener) {
