@@ -535,6 +535,15 @@ async function handleSlashCommand(text: string): Promise<boolean> {
       console.log(chalk.dim("  로그인이 필요합니다. /login 으로 사내 계정에 로그인하세요."));
       return true;
     }
+    // 첫 인사가 고정적인 커맨드는 LLM 호출 없이 즉시 출력(토큰·지연 절약).
+    // 프롬프트는 컨텍스트에만 넣고, 사용자가 답할 때부터 LLM 이 이어받는다.
+    if (kick.intro) {
+      console.log("");
+      for (const line of kick.intro.split("\n")) console.log("  " + line);
+      console.log("");
+      cm.seedTurn(kick.prompt, kick.intro);
+      return true;
+    }
     console.log(chalk.dim("  ⏳ thinking…"));
     await processAgentEvents(cm.run(kick.prompt));
     return true;

@@ -102,6 +102,16 @@ export class ConversationManager {
     this.messages = [system, ...msgs.slice(chosen)];
   }
 
+  /**
+   * LLM 호출 없이 대화에 한 턴(지시문 + 하드코딩된 어시스턴트 인사)을 심는다.
+   * 첫 인사가 고정적인 커맨드에서 첫 LLM 호출을 아끼기 위함. 이후 사용자가
+   * 답하면 run() 이 이 맥락을 이어받는다.
+   */
+  seedTurn(instructions: string, assistantIntro: string): void {
+    this.messages.push({ role: "user", content: instructions });
+    this.messages.push({ role: "assistant", content: assistantIntro });
+  }
+
   async *run(userMessage: string): AsyncGenerator<AgentEvent> {
     this.messages.push({ role: "user", content: userMessage });
 
