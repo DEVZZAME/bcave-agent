@@ -4,6 +4,7 @@ import { exec } from "node:child_process";
 import { glob } from "glob";
 import XLSX from "xlsx";
 import { BCAVE_CI, BCAVE_LOGO_DATA_URI } from "../kickstart/brand.js";
+import { DS_STYLES } from "../kickstart/ds-styles.js";
 import type { PermissionCategory } from "./permissions.js";
 
 export interface ToolDefinition {
@@ -205,11 +206,13 @@ export async function executeTool(
       }
       case "write_file": {
         const filePath = path.resolve(cwd, args.path as string);
-        // CI 자리표시자 → 실제 회사 로고 이미지로 치환 (프롬프트 토큰 절약)
+        // CI·디자인시스템 자리표시자 → 실제 리소스로 치환 (프롬프트 토큰 절약)
         let content = args.content as string;
         if (content.includes(BCAVE_CI)) {
           content = content.split(BCAVE_CI).join(BCAVE_LOGO_DATA_URI);
         }
+        // {{BCAVE_DS:<profile>}} → 해당 프로필 디자인시스템 CSS
+        content = content.replace(/\{\{BCAVE_DS:([\w-]+)\}\}/g, (_m, id) => DS_STYLES[id] ?? "");
         fs.mkdirSync(path.dirname(filePath), { recursive: true });
         fs.writeFileSync(filePath, content, "utf-8");
         return `File written: ${args.path}`;

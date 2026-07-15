@@ -2,7 +2,19 @@
 // (프롬프트 문자열만 만드는 순수 로직 — 실제 LLM 호출은 CLI 쪽에서.)
 
 import { DESIGN_COMMON, DESIGN_PROFILES } from "./design-systems.js";
+import { DS_CONTRACT } from "./ds-styles.js";
 import { BCAVE_BRAND } from "./brand.js";
+
+// 디자인시스템 CSS 를 자리표시자로 주입시키는 사용 지침 (실제 CSS 는 write_file 가 치환 — 프롬프트 토큰 절약).
+function dsUsage(id: string): string {
+  return (
+    "[디자인시스템 CSS 적용 — 반드시]\n" +
+    `결과 HTML <head> 의 <style> 맨 앞에 정확히 \`{{BCAVE_DS:${id}}}\` 한 줄만 넣어라. ` +
+    "그 자리에 이 디자인시스템의 토큰·컴포넌트 CSS 가 자동으로 주입된다(직접 토큰을 재정의하거나 로고처럼 그리지 말 것). 이어서 이 화면 전용 레이아웃 CSS 만 덧붙여라.\n" +
+    "레이아웃(배경·사이드바·그리드·카드 배치·간격)은 통일 토큰만 사용: 배경 var(--ds-bg) · 표면/카드 var(--ds-surface) · 글자 var(--ds-text)/보조 var(--ds-text-2) · 경계 var(--ds-border) · 강조 var(--ds-accent) · 모서리 var(--ds-radius)/var(--ds-radius-lg) · 간격 var(--ds-space)/var(--ds-space-lg) · 글꼴 var(--ds-font). " +
+    "버튼·카드·뱃지·입력·배너 등 UI 요소는 위 계약의 클래스를 그대로 쓰고, 하드코딩 hex 는 피해라."
+  );
+}
 
 // 유형별 "만드는 방법" 지시. 백엔드가 필요 없는 결과물은 프론트/파일 기반으로.
 const INSTRUCTIONS: Record<string, string> = {
@@ -79,10 +91,12 @@ export function generationPrompt(
   const label = LABELS[projectType] ?? "결과물";
   const isVisual = VISUAL_TYPES.has(projectType);
   const profile = designSystem ? DESIGN_PROFILES[designSystem] : undefined;
+  const hasDs = !!(isVisual && designSystem && DS_CONTRACT[designSystem]);
   const instr =
     (INSTRUCTIONS[projectType] ?? INSTRUCTIONS.other) +
     (isVisual ? "\n\n" + DESIGN_COMMON : "") +
     (isVisual && profile ? "\n\n" + profile : "") +
+    (hasDs ? "\n\n" + DS_CONTRACT[designSystem!] + "\n\n" + dsUsage(designSystem!) : "") +
     (isVisual ? "\n\n" + BCAVE_BRAND : "") +
     (FONT_TYPES.has(projectType) ? PRETENDARD : "");
   const refBlock =
