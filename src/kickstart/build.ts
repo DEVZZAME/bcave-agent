@@ -2,34 +2,44 @@
 // (프롬프트 문자열만 만드는 순수 로직 — 실제 LLM 호출은 CLI 쪽에서.)
 
 import { DESIGN_COMMON, DESIGN_PROFILES } from "./design-systems.js";
-import { DS_CONTRACT, DS_SHAPE, DS_FULL } from "./ds-styles.js";
+import { DS_CONTRACT, DS_SHAPE, DS_FULL, DS_WRAP } from "./ds-styles.js";
 import { BCAVE_BRAND } from "./brand.js";
 
-// 완전 동일(verbatim) 접근 지침: 디자인시스템 원본 nav·CSS·토글 JS 를 그대로 주입해 픽셀 동일하게.
+// 완전 동일(verbatim) 접근 지침: 디자인시스템 원본 nav·CSS·JS 를 그대로 주입해 픽셀 동일하게.
+// 프로필마다 GNB/사이드바·래퍼 클래스가 다르므로 DS_WRAP 로 정확한 뼈대를 만든다.
 function dsUsageVerbatim(id: string): string {
+  const w = DS_WRAP[id] ?? { shape: "gnb", main: "container", grid: "grid", head: "<h2>제목</h2>" };
+  const sec = (sid: string, body: string) =>
+    `<section id="${sid}"${w.section ? ` class="${w.section}"` : ""}>${w.head}${body}</section>`;
+  const content =
+    sec("overview", `<div class="${w.grid}"><div class="card">…KPI…</div>…</div>`) +
+    sec("charts", `<div class="${w.grid}"><div class="card"><div style="position:relative;height:300px"><canvas></canvas></div></div>…</div>`) +
+    sec("table", `<div class="card">…표(전체 데이터·검색·페이지네이션)…</div>`);
+  const body =
+    w.shape === "side"
+      ? `<div class="${w.wrapper}">{{BCAVE_DS_NAV:${id}}}<main class="${w.main}">${content}</main></div>`
+      : `{{BCAVE_DS_NAV:${id}}}<main class="${w.main}">${content}</main>`;
+  const shapeNote =
+    w.shape === "side"
+      ? "이 디자인시스템은 **좌측 사이드바** 구조다(위 래퍼 그대로)."
+      : "이 디자인시스템은 **상단 GNB** 구조다(사이드바로 바꾸지 마라).";
   return (
     "[이 디자인시스템을 100% 그대로 따라라 — 절대 규칙]\n" +
-    "★ 자체 레이아웃/CSS 를 새로 만들지 마라. **사이드바(aside)·자기만의 nav·자기만의 .container/.section/.card 정의 금지.** 아래 자리표시자와 원본 클래스만 써라. 어기면 실패다.\n" +
-    "★ 이 파일의 뼈대는 정확히 이 순서로:\n" +
+    "★ 자체 레이아웃/CSS 를 새로 만들지 마라. 자기만의 nav/사이드바/컨테이너/카드 정의 금지. 아래 자리표시자와 원본 클래스만 써라.\n" +
+    "★ " + shapeNote + " 로고·nav·(있으면)다크토글은 {{BCAVE_DS_NAV}} 에 이미 들어있으니 직접 만들지 마라.\n" +
+    "★ 파일 뼈대(정확히 이대로):\n" +
     "<!doctype html><html lang=\"ko\"><head>\n" +
     " <meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>…</title>\n" +
     " <script>{{BCAVE_CHARTJS}}</script>\n" +
-    ` <style>{{BCAVE_DS:${id}}}</style>   ← 원본 전체 CSS(토큰·다크모드·호버·반응형·컴포넌트) 자동 주입. 여기 외에 스타일을 새로 정의하지 마라(정 필요하면 아주 소량만).\n` +
+    ` <style>{{BCAVE_DS:${id}}}</style>\n` +
     "</head><body>\n" +
-    ` {{BCAVE_DS_NAV:${id}}}   ← 원본 상단 GNB + 다크모드 토글이 그대로 주입(브랜드=로고, 링크=개요/분포/목록). nav 를 직접 만들지 마라.\n` +
-    " <div class=\"container\">\n" +
-    "   <section id=\"overview\" class=\"section\"><p class=\"section-eyebrow\">라벨</p><h2 class=\"section-title\">고객 현황</h2><p class=\"section-desc\">설명</p>\n" +
-    "     <div class=\"grid grid-4\"><div class=\"card\">…KPI…</div>…</div></section>\n" +
-    "   <section id=\"charts\" class=\"section\"><p class=\"section-eyebrow\">Analytics</p><h2 class=\"section-title\">분포</h2>\n" +
-    "     <div class=\"grid grid-2\"><div class=\"card\"><div style=\"position:relative;height:300px\"><canvas></canvas></div></div>…</div></section>\n" +
-    "   <section id=\"table\" class=\"section\"><h2 class=\"section-title\">목록</h2><div class=\"card\">…표…</div></section>\n" +
-    " </div>\n" +
-    " <script>window.__DATA = {{BCAVE_DATA:데이터파일경로}};</script>   ← 전체 데이터 자동 주입(npm·스크립트 금지)\n" +
-    " <script> …window.__DATA 를 집계해 KPI·차트·표 렌더… </script>\n" +
-    ` {{BCAVE_DS_JS:${id}}}   ← 다크모드 토글 등 인터랙션\n` +
+    ` ${body}\n` +
+    " <script>window.__DATA = {{BCAVE_DATA:데이터파일경로}};</script>\n" +
+    " <script> …window.__DATA 를 집계해 KPI·차트·표 렌더(실제 컬럼만)… </script>\n" +
+    ` {{BCAVE_DS_JS:${id}}}\n` +
     "</body></html>\n" +
-    "★ 컴포넌트는 원본 클래스만: 카드 .card, 배치 .grid.grid-2/.grid-3/.grid-4, 버튼 .btn.btn-primary/.btn-secondary, 배지 .badge 등. 하드코딩 hex·인라인 색·자체 그리드 금지.\n" +
-    "★ 로고는 nav 에 이미 있으니 본문에 또 넣지 마라. 차트: 시간추이=line, 비교=bar, options responsive:true,maintainAspectRatio:false."
+    "★ 컴포넌트는 원본 클래스만: 카드 .card, 배치 ." + w.grid.replace(/ /g, ".") + " 등, 버튼 .btn.btn-primary, 배지 .badge. 하드코딩 hex·인라인 색·자체 그리드 금지.\n" +
+    "★ 차트: 시간추이=line, 비교=bar, options responsive:true,maintainAspectRatio:false. KPI·차트·표는 window.__DATA 의 실제 컬럼으로만."
   );
 }
 
