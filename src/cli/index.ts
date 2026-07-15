@@ -281,12 +281,18 @@ function toolStatus(name: string, args: Record<string, unknown>): string {
 // ─── 작업 중 스피너 / 입력 차단 / ESC 취소 ───────────────
 let processing = false;
 let aborted = false;
+let abortController: AbortController | null = null;
 let workRawListener: ((b: Buffer) => void) | null = null;
 
 // 작업 중에는 readline 을 멈춰(에코·버퍼링 방지) 입력을 막고, ESC 만 raw 로 감지해 취소.
 function enterWorkInput(): void {
   try { rl.pause(); } catch { /* noop */ }
-  workRawListener = (buf: Buffer) => { if (buf.includes(0x1b)) aborted = true; };
+  workRawListener = (buf: Buffer) => {
+    if (buf.includes(0x1b)) {
+      aborted = true;
+      abortController?.abort(); // 진행 중인 API 요청 즉시 취소
+    }
+  };
   process.stdin.on("data", workRawListener);
 }
 function exitWorkInput(): void {
@@ -771,7 +777,8 @@ async function offerBuild(cwd: string): Promise<void> {
     console.log(chalk.dim("  결과물 생성은 로그인이 필요합니다. /login 후 다시 시도하세요."));
     return;
   }
-  await processAgentEvents(cm.run(prompt));
+  abortController = new AbortController();
+  await processAgentEvents(cm.run(prompt, abortController.signal));
 }
 
 async function handleSlashCommand(text: string): Promise<boolean> {
@@ -942,7 +949,8 @@ async function handleInput(text: string): Promise<void> {
   }
 
 
-  const gen = cm.run(trimmed);
+  abortController = new AbortController();
+  const gen = cm.run(trimmed, abortController.signal);
   await processAgentEvents(gen);
   prompt();
 }

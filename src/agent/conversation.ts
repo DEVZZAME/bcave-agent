@@ -112,7 +112,7 @@ export class ConversationManager {
     this.messages.push({ role: "assistant", content: assistantIntro });
   }
 
-  async *run(userMessage: string): AsyncGenerator<AgentEvent> {
+  async *run(userMessage: string, signal?: AbortSignal): AsyncGenerator<AgentEvent> {
     this.messages.push({ role: "user", content: userMessage });
 
     // 같은 텍스트가 연속으로 출력되는 중복 방지 (모델이 도구 호출 전후로
@@ -122,8 +122,10 @@ export class ConversationManager {
     try {
       while (true) {
         this.trimHistory();
+        if (signal?.aborted) return;
         const response = await chat(this.client, this.messages, this.config.model, {
           onAuthError: () => this.refreshSession(),
+          signal,
         });
         const choice = response.choices[0];
         if (!choice) {
@@ -193,6 +195,8 @@ export class ConversationManager {
         }
       }
     } catch (err) {
+      // ESC 중단은 오류가 아니라 조용히 종료
+      if (signal?.aborted || (err as Error)?.name === "AbortError") return;
       yield { type: "error", message: (err as Error).message };
     }
   }

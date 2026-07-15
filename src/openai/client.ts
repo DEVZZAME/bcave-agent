@@ -26,6 +26,8 @@ export interface ChatOptions {
    * null 을 반환하면 갱신 실패로 간주하고 원래 에러를 던진다.
    */
   onAuthError?: () => Promise<OpenAI | null>;
+  /** 사용자가 ESC 로 중단 시 진행 중인 요청을 취소하는 신호. */
+  signal?: AbortSignal;
 }
 
 export async function chat(
@@ -40,13 +42,18 @@ export async function chat(
 
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
-      return await activeClient.chat.completions.create({
-        model,
-        messages,
-        tools: TOOL_DEFINITIONS,
-        tool_choice: "auto",
-      });
+      return await activeClient.chat.completions.create(
+        {
+          model,
+          messages,
+          tools: TOOL_DEFINITIONS,
+          tool_choice: "auto",
+        },
+        { signal: opts.signal },
+      );
     } catch (err) {
+      // 사용자가 중단(ESC): 재시도하지 않고 즉시 던진다.
+      if (opts.signal?.aborted || (err as Error)?.name === "AbortError") throw err;
       // 인증 만료: 토큰 갱신 후 1회 재시도
       if (
         err instanceof OpenAI.APIError &&
