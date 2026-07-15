@@ -13,10 +13,12 @@ import {
   resetKickstart,
   hasDraft,
   buildPromptFor,
-  dashboardPrompt,
+  dashboardTargetFromSaved,
   DESIGN_SYSTEM_Q,
 } from "../kickstart/index.js";
 import type { WizardIO, Answer, KickstartQuestion } from "../kickstart/types.js";
+import { buildDashboardSpec, renderDashboard } from "../kickstart/dashboard.js";
+import { readSpreadsheetRows, executeTool } from "../agent/tools.js";
 import fs from "node:fs";
 import { execSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -801,6 +803,17 @@ function showHelp(): void {
 
 // /kickstart 확정 후: 정리된 기획으로 실제 결과물을 지금 만들지 물어보고, 예 면 AI 로 생성.
 async function offerBuild(cwd: string): Promise<void> {
+  // 데이터 대시보드 + 스프레드시트 참고파일이면 결정론적 엔진으로 (LLM 미사용, 품질 일정).
+  const dashTarget = dashboardTargetFromSaved(cwd);
+  if (dashTarget) {
+    const go = await wizardIO.confirm("정리된 내용으로 지금 바로 대시보드를 만들어드릴까요?", true);
+    if (!go) {
+      console.log(chalk.dim("  알겠습니다. /build 로 언제든 만들 수 있어요."));
+      return;
+    }
+    await generateDashboardFile(dashTarget.file, dashTarget.designSystem);
+    return;
+  }
   const prompt = buildPromptFor(cwd);
   if (!prompt) return;
   const go = await wizardIO.confirm("정리된 내용으로 지금 바로 만들어드릴까요? (AI가 결과물을 생성합니다)", true);
@@ -818,6 +831,13 @@ async function offerBuild(cwd: string): Promise<void> {
 
 // 저장된 기획(.agent/kickstart.json)으로 바로 (재)생성 — 마법사 다시 안 거침.
 async function buildFromSaved(cwd: string): Promise<void> {
+  // 데이터 대시보드 + 스프레드시트 참고파일이면 결정론적 엔진으로 (LLM 미사용, 품질 일정).
+  const dashTarget = dashboardTargetFromSaved(cwd);
+  if (dashTarget) {
+    console.log(chalk.dim("  저장된 기획(데이터 대시보드)으로 만듭니다…"));
+    await generateDashboardFile(dashTarget.file, dashTarget.designSystem);
+    return;
+  }
   const prompt = buildPromptFor(cwd);
   if (!prompt) {
     console.log(chalk.dim("  저장된 기획이 없습니다. 먼저 /kickstart 로 정리하세요."));
@@ -832,21 +852,24 @@ async function buildFromSaved(cwd: string): Promise<void> {
   await processAgentEvents(cm.run(prompt, abortController.signal));
 }
 
-// /dashboard — 참고 파일 + 디자인시스템만 골라 바로 대시보드 생성 (마법사 생략).
+// /dashboard — 참고 파일 + 디자인시스템만 골라 바로 대시보드 생성 (결정론적 엔진: LLM 미사용).
 async function dashboardCommand(): Promise<void> {
-  if (!cm) {
-    console.log(chalk.dim("  로그인이 필요합니다. /login 후 다시 시도하세요."));
-    return;
-  }
   console.log("");
   console.log("  " + chalk.bold("데이터 대시보드 만들기"));
-  console.log("  " + chalk.dim("참고할 데이터 파일과 디자인만 고르면 됩니다."));
+  console.log("  " + chalk.dim("데이터를 코드가 분석해 검증된 템플릿으로 만듭니다 (토큰 0)."));
   console.log("");
-  const file = (await askLine(chalk.dim("  데이터 파일 경로 (엑셀/CSV) > "))).trim();
+  let file = (await askLine(chalk.dim("  데이터 파일 경로 (엑셀/CSV) > "))).trim();
   if (!file) {
     console.log(chalk.dim("  취소했습니다."));
     return;
   }
+  file = file.replace(/^['"]|['"]$/g, "").replace(/^~/, process.env.HOME ?? "~");
+  if (!nodePath.isAbsolute(file)) file = nodePath.resolve(process.cwd(), file);
+  if (!fs.existsSync(file)) {
+    console.log(chalk.red("  파일을 찾을 수 없습니다: ") + file);
+    return;
+  }
+
   console.log("");
   console.log("  " + chalk.bold("어떤 디자인으로 만들까요?"));
   const opts = (DESIGN_SYSTEM_Q.options ?? []) as { label: string; value: string }[];
@@ -858,10 +881,51 @@ async function dashboardCommand(): Promise<void> {
     console.log(chalk.dim("  취소했습니다."));
     return;
   }
+  const ds = opts[idx].value === "auto" ? "apple" : opts[idx].value;
   console.log("  " + chalk.cyan("선택: ") + opts[idx].label);
-  console.log(chalk.dim("  대시보드를 만듭니다…"));
-  abortController = new AbortController();
-  await processAgentEvents(cm.run(dashboardPrompt(file, opts[idx].value), abortController.signal));
+  await generateDashboardFile(file, ds);
+}
+
+/** 결정론적 대시보드 엔진: 데이터 프로파일링 → 스펙 → 검증된 템플릿으로 조립 → 저장·검토. LLM 미사용. */
+async function generateDashboardFile(rawFile: string, designSystem: string): Promise<boolean> {
+  let file = rawFile.replace(/^['"]|['"]$/g, "").replace(/^~/, process.env.HOME ?? "~");
+  if (!nodePath.isAbsolute(file)) file = nodePath.resolve(process.cwd(), file);
+  if (!fs.existsSync(file)) {
+    console.log(chalk.red("  파일을 찾을 수 없습니다: ") + file);
+    return false;
+  }
+  const ds = designSystem && designSystem !== "auto" ? designSystem : "apple";
+  try {
+    // 1) 데이터 읽기 → 코드로 프로파일링 → 스펙 생성
+    const { rows, sheet } = readSpreadsheetRows(file);
+    if (!rows.length) {
+      console.log(chalk.red("  데이터가 비어 있습니다: ") + file);
+      return false;
+    }
+    const title = nodePath.basename(file, nodePath.extname(file));
+    const spec = buildDashboardSpec(rows, title);
+    console.log(
+      chalk.dim(
+        `  분석: ${rows.length}행 · 시트 "${sheet}" · KPI ${spec.kpis.length}개 · 차트 ${spec.charts.length}개 (${spec.charts.map((c) => c.col).join(", ") || "없음"})`,
+      ),
+    );
+
+    // 2) 템플릿으로 HTML 조립 → write_file (CSS·데이터 자리표시자 주입 + 자동 검토)
+    const html = renderDashboard(ds, file, spec, sheet);
+    const outPath = nodePath.join(nodePath.dirname(file), `${title}-dashboard.html`);
+    const res = await executeTool("write_file", { path: outPath, content: html }, process.cwd());
+    const kb = fs.existsSync(outPath) ? Math.round(fs.statSync(outPath).size / 1024) : 0;
+    if (res.includes("검토 통과") || !res.includes("⚠")) {
+      console.log(chalk.green("  ✓ 완성: ") + outPath + chalk.dim(` (${kb}KB, 검토 통과)`));
+    } else {
+      console.log(chalk.yellow("  ⚠ 생성했지만 검토 경고: ") + outPath);
+      console.log(chalk.dim("    " + res.split("\n").slice(1, 3).join(" ")));
+    }
+    return true;
+  } catch (e) {
+    console.log(chalk.red("  대시보드 생성 실패: ") + (e as Error).message);
+    return false;
+  }
 }
 
 async function handleSlashCommand(text: string): Promise<boolean> {

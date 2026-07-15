@@ -279,6 +279,20 @@ export function dashboardPrompt(referenceFile: string, designSystem: string): st
   return generationPrompt("dashboard", brief, ds, referenceFile);
 }
 
+/** 저장된 기획이 "데이터 대시보드 + 스프레드시트 참고파일"이면 결정론적 엔진 대상 정보를 반환. 아니면 null. */
+export function dashboardTargetFromSaved(
+  cwd: string,
+): { file: string; designSystem: string } | null {
+  const rec = store.loadFinal(cwd);
+  if (!rec) return null;
+  if (String(rec.projectType ?? "") !== "dashboard") return null;
+  const req = (rec.requirements as Record<string, unknown>) ?? {};
+  const ref = typeof req.referenceFiles === "string" ? req.referenceFiles.trim() : "";
+  if (!ref || !/\.(xlsx|xls|xlsm|xlsb|ods|csv)$/i.test(ref)) return null;
+  const ds = typeof req.designSystem === "string" ? req.designSystem : "auto";
+  return { file: ref, designSystem: ds };
+}
+
 /** 저장된 기획을 "실제 결과물 생성" 프롬프트로 변환 (LLM 에 넘길 문자열). 없으면 null. */
 export function buildPromptFor(cwd: string): string | null {
   const rec = store.loadFinal(cwd);
