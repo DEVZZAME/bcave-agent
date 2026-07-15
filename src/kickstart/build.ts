@@ -1,7 +1,7 @@
 // /kickstart 로 정리한 기획 정보를 실제 결과물 생성 프롬프트로 변환.
 // (프롬프트 문자열만 만드는 순수 로직 — 실제 LLM 호출은 CLI 쪽에서.)
 
-import { FRONTEND_DESIGN } from "../agent/frontend-design.js";
+import { DESIGN_COMMON, DESIGN_PROFILES } from "./design-systems.js";
 
 // 유형별 "만드는 방법" 지시. 백엔드가 필요 없는 결과물은 프론트/파일 기반으로.
 const INSTRUCTIONS: Record<string, string> = {
@@ -64,27 +64,6 @@ const PRETENDARD =
   "`font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, sans-serif;` 로 지정해. " +
   "PPT·문서 등 웹이 아니면 글꼴을 Pretendard 로(설치돼 있지 않으면 유사한 산세리프로 대체) 지정해.";
 
-// 유명 디자인 시스템별 특징 — 작은 모델도 따라올 수 있게 구체적 값으로.
-const DESIGN_SYSTEMS: Record<string, string> = {
-  apple:
-    "애플(Apple) 스타일 — 다음을 반드시 지켜:\n" +
-    "· 배경: 순수 흰색(#ffffff) 또는 애플 라이트그레이(#f5f5f7)로 **납작하게**. 그라데이션·radial-gradient·전면 유리(글래스)블러 금지.\n" +
-    "· 글자색: 기본 #1d1d1f, 보조 #6e6e73.\n" +
-    "· 강조색: 애플 블루 #0071e3 **딱 하나만**, 링크·핵심 버튼 등 꼭 필요한 곳에만 아주 절제해서. 알록달록한 배지 남발 금지(상태는 회색조 위주).\n" +
-    "· 카드: 흰 배경, radius 18px, 그림자는 아주 옅게(예: 0 1px 3px rgba(0,0,0,.06)). 두꺼운 그림자·테두리 금지.\n" +
-    "· 여백: 아주 넉넉하게. 요소 사이 공백을 충분히.\n" +
-    "· 타이포: 제목은 크고 굵게 letter-spacing:-0.02em, 핵심 숫자(KPI)는 아주 크게(48px 이상, weight 600~700).\n" +
-    "· 전체 인상: 미니멀·고요·고급. 화려함보다 정돈과 여백.",
-  material:
-    "구글 Material Design 스타일 — 배경 #ffffff, 강조는 브랜드 1색(예: #1a73e8)과 엘리베이션(그림자)로 위계 표현, 카드 radius 12px + 부드러운 그림자, 8px 그리드, 상태색(성공 초록/경고 노랑/오류 빨강) 뚜렷이. 명확한 컴포넌트(카드·칩·버튼). 직관적이고 활기차게.",
-  fluent:
-    "마이크로소프트 Fluent 스타일 — 배경 #faf9f8, 차분한 색과 은은한 반투명(아크릴) 표면, 강조 #0f6cbd, 카드 radius 8px, 정돈된 밀도와 기업용 신뢰감. 절제되고 명료하게.",
-  minimal:
-    "모던 미니멀(Linear/Vercel 풍) — 뉴트럴 또는 다크(#0b0b0c) 배경, 얇은 1px 경계선(rgba 저채도), 강조색 1개만, 카드 radius 10px, 그림자 거의 없이 선으로 구분, 정밀한 여백·타이포. 세련되고 군더더기 없이.",
-  toss:
-    "토스 스타일 — 아주 깨끗한 흰 배경, 큼직한 숫자와 굵은 강조, 친근하게 둥근 요소(radius 16~20px), 강조는 토스 블루 #3182f6, 넉넉한 여백. 쉽고 신뢰감 있게.",
-  auto: "",
-};
 
 /** 정리된 기획(사람이 읽는 마크다운 brief) + 유형(+디자인 시스템, 참고 파일)으로 생성 프롬프트를 만든다. */
 export function generationPrompt(
@@ -94,11 +73,12 @@ export function generationPrompt(
   referenceFiles?: string,
 ): string {
   const label = LABELS[projectType] ?? "결과물";
-  const sys = designSystem && DESIGN_SYSTEMS[designSystem];
+  const isVisual = VISUAL_TYPES.has(projectType);
+  const profile = designSystem ? DESIGN_PROFILES[designSystem] : undefined;
   const instr =
     (INSTRUCTIONS[projectType] ?? INSTRUCTIONS.other) +
-    (VISUAL_TYPES.has(projectType) ? "\n\n" + FRONTEND_DESIGN : "") +
-    (sys ? "\n\n[디자인 시스템]\n" + sys : "") +
+    (isVisual ? "\n\n" + DESIGN_COMMON : "") +
+    (isVisual && profile ? "\n\n" + profile : "") +
     (FONT_TYPES.has(projectType) ? PRETENDARD : "");
   const refBlock =
     referenceFiles && referenceFiles.trim()
