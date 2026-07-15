@@ -13,6 +13,7 @@ import {
   editKickstart,
   resetKickstart,
   hasDraft,
+  buildPromptFor,
 } from "../kickstart/index.js";
 import type { WizardIO, Answer, KickstartQuestion } from "../kickstart/types.js";
 import fs from "node:fs";
@@ -633,6 +634,23 @@ function showHelp(): void {
   console.log("");
 }
 
+// /kickstart 확정 후: 정리된 기획으로 실제 결과물을 지금 만들지 물어보고, 예 면 AI 로 생성.
+async function offerBuild(cwd: string): Promise<void> {
+  const prompt = buildPromptFor(cwd);
+  if (!prompt) return;
+  const go = await wizardIO.confirm("정리된 내용으로 지금 바로 만들어드릴까요? (AI가 결과물을 생성합니다)");
+  if (!go) {
+    console.log(chalk.dim("  알겠습니다. 저장된 기획(.agent/kickstart.md)을 바탕으로 언제든 만들 수 있어요."));
+    return;
+  }
+  if (!cm) {
+    console.log(chalk.dim("  결과물 생성은 로그인이 필요합니다. /login 후 다시 시도하세요."));
+    return;
+  }
+  console.log(chalk.dim("  ⏳ thinking…"));
+  await processAgentEvents(cm.run(prompt));
+}
+
 async function handleSlashCommand(text: string): Promise<boolean> {
   const trimmed = text.trim();
 
@@ -681,12 +699,14 @@ async function handleSlashCommand(text: string): Promise<boolean> {
       return true;
     }
     // 인자 없음: 중단된 초안이 있으면 이어서 할지 물어봄
+    let outcome;
     if (hasDraft(cwd)) {
       const resume = await wizardIO.confirm("이어서 진행할 내용이 있습니다. 이어서 할까요? (아니오 = 새로 시작)");
-      await runKickstart(wizardIO, cwd, { resume });
+      outcome = await runKickstart(wizardIO, cwd, { resume });
     } else {
-      await runKickstart(wizardIO, cwd);
+      outcome = await runKickstart(wizardIO, cwd);
     }
+    if (outcome === "confirmed") await offerBuild(cwd);
     return true;
   }
 

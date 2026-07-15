@@ -10,6 +10,7 @@ import {
   recommendType,
 } from "./schemas.js";
 import { buildSummary, questionsFor, answeredRows } from "./formatter.js";
+import { generationPrompt } from "./build.js";
 import * as store from "./storage.js";
 
 export type Outcome = "confirmed" | "cancelled";
@@ -241,4 +242,12 @@ export async function editKickstart(io: WizardIO, cwd: string): Promise<void> {
 
 export function hasDraft(cwd: string): boolean {
   return store.loadDraft(cwd) !== null;
+}
+
+/** 저장된 기획을 "실제 결과물 생성" 프롬프트로 변환 (LLM 에 넘길 문자열). 없으면 null. */
+export function buildPromptFor(cwd: string): string | null {
+  const rec = store.loadFinal(cwd);
+  const brief = store.loadFinalMarkdown(cwd);
+  if (!rec || !brief) return null;
+  return generationPrompt(String(rec.projectType ?? "other"), brief);
 }
