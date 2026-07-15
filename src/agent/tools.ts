@@ -173,6 +173,40 @@ function looksBinary(text: string): boolean {
   return bad / sample.length > 0.1;
 }
 
+/** CI 로고·디자인시스템 CSS·Chart.js 자리표시자(및 Chart.js CDN 태그)를 실제 리소스로 치환. */
+function resolvePlaceholders(content: string): string {
+  if (content.includes(BCAVE_CI)) content = content.split(BCAVE_CI).join(BCAVE_LOGO_DATA_URI);
+  content = content.replace(/\{\{BCAVE_DS:([\w-]+)\}\}/g, (_m, id) => DS_STYLES[id] ?? "");
+  if (content.includes("{{BCAVE_CHARTJS}}")) content = content.split("{{BCAVE_CHARTJS}}").join(CHARTJS_SOURCE);
+  content = content.replace(
+    /<script\b[^>]*\bsrc="[^"]*chart[^"]*"[^>]*>\s*<\/script>/gi,
+    `<script>${CHARTJS_SOURCE}</script>`,
+  );
+  return content;
+}
+
+// 스크립트(shell_exec)가 써낸 HTML 에 남은 자리표시자를 사후 치환 (write_file 툴 우회 대비).
+async function resolvePlaceholdersInDir(cwd: string): Promise<void> {
+  let files: string[] = [];
+  try {
+    files = await glob("**/*.{html,htm,svg}", { cwd, nodir: true, ignore: IGNORE });
+  } catch {
+    return;
+  }
+  for (const f of files.slice(0, MAX_ITEMS)) {
+    const full = path.join(cwd, f);
+    try {
+      if (fs.statSync(full).size > 20_000_000) continue;
+      const src = fs.readFileSync(full, "utf-8");
+      if (!src.includes("{{BCAVE_")) continue; // 우리 자리표시자가 있는 파일만
+      const out = resolvePlaceholders(src);
+      if (out !== src) fs.writeFileSync(full, out, "utf-8");
+    } catch {
+      /* skip */
+    }
+  }
+}
+
 export async function executeTool(
   name: string,
   args: Record<string, unknown>,
@@ -207,21 +241,8 @@ export async function executeTool(
       }
       case "write_file": {
         const filePath = path.resolve(cwd, args.path as string);
-        // CI·디자인시스템 자리표시자 → 실제 리소스로 치환 (프롬프트 토큰 절약)
-        let content = args.content as string;
-        if (content.includes(BCAVE_CI)) {
-          content = content.split(BCAVE_CI).join(BCAVE_LOGO_DATA_URI);
-        }
-        // {{BCAVE_DS:<profile>}} → 해당 프로필 디자인시스템 CSS
-        content = content.replace(/\{\{BCAVE_DS:([\w-]+)\}\}/g, (_m, id) => DS_STYLES[id] ?? "");
-        // 완전한 단일 파일: Chart.js 자리표시자·CDN <script> 를 인라인 소스로 치환(오프라인 가능)
-        if (content.includes("{{BCAVE_CHARTJS}}")) {
-          content = content.split("{{BCAVE_CHARTJS}}").join(CHARTJS_SOURCE);
-        }
-        content = content.replace(
-          /<script\b[^>]*\bsrc="[^"]*chart[^"]*"[^>]*>\s*<\/script>/gi,
-          `<script>${CHARTJS_SOURCE}</script>`,
-        );
+        // CI·디자인시스템·Chart.js 자리표시자 → 실제 리소스로 치환 (프롬프트 토큰 절약)
+        const content = resolvePlaceholders(args.content as string);
         fs.mkdirSync(path.dirname(filePath), { recursive: true });
         fs.writeFileSync(filePath, content, "utf-8");
         return `File written: ${args.path}`;
@@ -289,6 +310,8 @@ export async function executeTool(
           });
           child.on("error", (err) => resolve(`Error: ${err.message}`));
         });
+        // 스크립트가 HTML 을 써냈다면 남은 자리표시자를 치환한다.
+        await resolvePlaceholdersInDir(cwd);
         return truncate(output, MAX_TOOL_CHARS, "출력이 김");
       }
       default:
