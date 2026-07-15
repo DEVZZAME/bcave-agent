@@ -211,7 +211,7 @@ const rl = readline.createInterface({
 
 // Shift+Tab: mode cycle
 process.stdin.on("keypress", (_str: string, key: readline.Key) => {
-  if (selectorActive || authInputActive) return;
+  if (selectorActive || authInputActive || processing) return;
   if (key && key.name === "tab" && key.shift) {
     process.stdout.write("\r\x1b[2K");
     cycleMode();
@@ -227,7 +227,7 @@ process.stdin.on("keypress", (_str: string, key: readline.Key) => {
 let pendingCommandSelector = false;
 
 process.stdin.on("keypress", (str: string) => {
-  if (selectorActive || authInputActive) return;
+  if (selectorActive || authInputActive || processing) return;
   if (str === "/") {
     setImmediate(() => {
       const line = (rl as unknown as { line: string }).line ?? "";
@@ -275,6 +275,45 @@ function toolStatus(name: string, args: Record<string, unknown>): string {
       return "작업 중" + (c ? "  " + chalk.dim(c.length > 46 ? c.slice(0, 46) + "…" : c) : "");
     }
     default: return name;
+  }
+}
+
+// ─── 작업 중 스피너 / 입력 차단 / ESC 취소 ───────────────
+let processing = false;
+let aborted = false;
+let workRawListener: ((b: Buffer) => void) | null = null;
+
+// 작업 중에는 readline 을 멈춰(에코·버퍼링 방지) 입력을 막고, ESC 만 raw 로 감지해 취소.
+function enterWorkInput(): void {
+  try { rl.pause(); } catch { /* noop */ }
+  workRawListener = (buf: Buffer) => { if (buf.includes(0x1b)) aborted = true; };
+  process.stdin.on("data", workRawListener);
+}
+function exitWorkInput(): void {
+  if (workRawListener) {
+    process.stdin.removeListener("data", workRawListener);
+    workRawListener = null;
+  }
+  try { rl.resume(); } catch { /* noop */ }
+}
+
+const SPIN = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+let spinnerTimer: ReturnType<typeof setInterval> | null = null;
+function startSpinner(label = "작업 중…"): void {
+  stopSpinner();
+  let i = 0;
+  spinnerTimer = setInterval(() => {
+    process.stdout.write(
+      `\r\x1b[2K  ${chalk.cyan(SPIN[i % SPIN.length])} ${chalk.dim(label)} ${chalk.dim("· ESC 로 중지")}`,
+    );
+    i++;
+  }, 80);
+}
+function stopSpinner(): void {
+  if (spinnerTimer) {
+    clearInterval(spinnerTimer);
+    spinnerTimer = null;
+    process.stdout.write("\r\x1b[2K");
   }
 }
 
@@ -732,7 +771,6 @@ async function offerBuild(cwd: string): Promise<void> {
     console.log(chalk.dim("  결과물 생성은 로그인이 필요합니다. /login 후 다시 시도하세요."));
     return;
   }
-  console.log(chalk.dim("  ⏳ thinking…"));
   await processAgentEvents(cm.run(prompt));
 }
 
@@ -806,61 +844,69 @@ async function handleSlashCommand(text: string): Promise<boolean> {
 
 // ─── Agent Events ──────────────────────────────────────
 async function processAgentEvents(gen: AsyncGenerator<AgentEvent>): Promise<void> {
-  let thinkingCleared = false;
+  processing = true;
+  aborted = false;
+  enterWorkInput();
+  startSpinner();
+  try {
+    for await (const event of gen) {
+      if (aborted) break;
+      stopSpinner();
 
-  for await (const event of gen) {
-    // Clear "thinking" indicator on first output
-    if (!thinkingCleared) {
-      process.stdout.write("\x1b[A\r\x1b[2K");
-      thinkingCleared = true;
-    }
+      switch (event.type) {
+        case "text":
+          console.log("");
+          for (const line of event.content.split("\n")) console.log("  " + line);
+          console.log("");
+          break;
 
-    switch (event.type) {
-      case "text":
-        console.log("");
-        const lines = event.content.split("\n");
-        for (const line of lines) {
-          console.log("  " + line);
+        case "tool_call": {
+          const req = event.request;
+          console.log("  " + chalk.cyan("⚡") + " " + toolStatus(req.name, req.args));
+          // 승인 선택 동안은 정상 입력 복원 (방향키 셀렉터 동작)
+          exitWorkInput();
+          if (mode === "auto-approve") {
+            const answer = await askYesAlwaysNo();
+            if (answer === "no") cm!.rejectToolCall(req.id);
+            else cm!.approveToolCall(req.id);
+          } else {
+            const approved = await askYesNo();
+            if (approved) cm!.approveToolCall(req.id);
+            else cm!.rejectToolCall(req.id);
+          }
+          enterWorkInput();
+          break;
         }
-        console.log("");
-        break;
 
-      case "tool_call": {
-        const req = event.request;
-        console.log("  " + chalk.cyan("⚡") + " " + toolStatus(req.name, req.args));
-
-        if (mode === "auto-approve") {
-          const answer = await askYesAlwaysNo();
-          if (answer === "no") { cm!.rejectToolCall(req.id); }
-          else { cm!.approveToolCall(req.id); }
-        } else {
-          const approved = await askYesNo();
-          if (approved) { cm!.approveToolCall(req.id); }
-          else { cm!.rejectToolCall(req.id); }
+        case "tool_result": {
+          // 원문은 표시하지 않고, 실패했을 때만 짧게 알린다.
+          const r = (event.result || "").trim();
+          if (/^(Error|Exit code|Invalid regular expression|\[바이너리)/.test(r)) {
+            console.log("    " + chalk.yellow("⚠ ") + chalk.dim(r.split("\n")[0].slice(0, 110)));
+          }
+          break;
         }
-        break;
+
+        case "error":
+          console.log("");
+          console.log("  " + chalk.red("✗ " + event.message));
+          console.log("");
+          break;
+
+        case "done":
+          break;
       }
 
-      case "tool_result": {
-        // 원문(파일 내용·검색 결과·CSV 등)은 사용자에게 표시하지 않는다.
-        // 실패했을 때만 짧게 한 줄 알려준다.
-        const r = (event.result || "").trim();
-        if (/^(Error|Exit code|Invalid regular expression|\[바이너리)/.test(r)) {
-          const first = r.split("\n")[0].slice(0, 110);
-          console.log("    " + chalk.yellow("⚠ ") + chalk.dim(first));
-        }
-        break;
-      }
-
-      case "error":
-        console.log("");
-        console.log("  " + chalk.red("✗ " + event.message));
-        console.log("");
-        break;
-
-      case "done":
-        break;
+      if (!aborted && event.type !== "done") startSpinner();
     }
+  } finally {
+    stopSpinner();
+    exitWorkInput();
+    processing = false;
+  }
+  if (aborted) {
+    console.log("  " + chalk.yellow("■ 중지했습니다."));
+    console.log("");
   }
 }
 
@@ -895,7 +941,6 @@ async function handleInput(text: string): Promise<void> {
     return;
   }
 
-  console.log(chalk.dim("  ⏳ thinking…"));
 
   const gen = cm.run(trimmed);
   await processAgentEvents(gen);
