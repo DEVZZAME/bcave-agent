@@ -103,6 +103,7 @@ function cycleMode(): void {
 const COMMANDS = [
   // 요구사항 수집 마법사 (정적, 토큰 0)
   { name: "/kickstart", desc: "질문에 답하며 만들 것을 정리 (토큰 0)" },
+  { name: "/build", desc: "저장된 기획으로 바로 다시 생성" },
   // 유틸리티
   { name: "/model", desc: "모델 선택" },
   { name: "/usage", desc: "사용량/한도 확인" },
@@ -781,6 +782,22 @@ async function offerBuild(cwd: string): Promise<void> {
   await processAgentEvents(cm.run(prompt, abortController.signal));
 }
 
+// 저장된 기획(.agent/kickstart.json)으로 바로 (재)생성 — 마법사 다시 안 거침.
+async function buildFromSaved(cwd: string): Promise<void> {
+  const prompt = buildPromptFor(cwd);
+  if (!prompt) {
+    console.log(chalk.dim("  저장된 기획이 없습니다. 먼저 /kickstart 로 정리하세요."));
+    return;
+  }
+  if (!cm) {
+    console.log(chalk.dim("  결과물 생성은 로그인이 필요합니다. /login 후 다시 시도하세요."));
+    return;
+  }
+  console.log(chalk.dim("  저장된 기획으로 다시 만듭니다…"));
+  abortController = new AbortController();
+  await processAgentEvents(cm.run(prompt, abortController.signal));
+}
+
 async function handleSlashCommand(text: string): Promise<boolean> {
   const trimmed = text.trim();
 
@@ -816,6 +833,9 @@ async function handleSlashCommand(text: string): Promise<boolean> {
 
   if (trimmed === "/mode") { cycleMode(); return true; }
 
+  // /build — 저장된 기획으로 바로 다시 생성
+  if (trimmed === "/build") { await buildFromSaved(process.cwd()); return true; }
+
   // /kickstart — 정적(토큰 0) 요구사항 수집 마법사 + 하위명령
   if (trimmed === "/kickstart" || trimmed.startsWith("/kickstart ")) {
     const sub = trimmed.slice("/kickstart".length).trim();
@@ -824,8 +844,9 @@ async function handleSlashCommand(text: string): Promise<boolean> {
     if (sub === "reset") { await resetKickstart(wizardIO, cwd); return true; }
     if (sub === "edit") { await editKickstart(wizardIO, cwd); return true; }
     if (sub === "resume") { await runKickstart(wizardIO, cwd, { resume: true }); return true; }
+    if (sub === "build") { await buildFromSaved(cwd); return true; }
     if (sub && sub !== "new") {
-      console.log(chalk.dim("  사용법: /kickstart [show|edit|reset|resume]"));
+      console.log(chalk.dim("  사용법: /kickstart [show|edit|reset|resume|build]"));
       return true;
     }
     // 인자 없음: 중단된 초안이 있으면 이어서 할지 물어봄

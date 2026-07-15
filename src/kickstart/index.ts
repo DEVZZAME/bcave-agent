@@ -35,10 +35,9 @@ function newState(projectType: string): KickstartState {
 
 const NEXT_STEPS =
   "\n기획 정보가 저장되었습니다.\n\n다음 단계:\n" +
-  "- /plan : 구현 계획 만들기\n" +
-  "- /build : 프로젝트 생성 시작\n" +
-  "- /kickstart edit : 기획 내용 수정\n" +
+  "- /build : 저장된 기획으로 바로 만들기 (또는 /kickstart build)\n" +
   "- /kickstart show : 저장된 기획 내용 확인\n" +
+  "- /kickstart edit : 기획 내용 수정\n" +
   "- /kickstart reset : 기획 내용 초기화";
 
 /** 메인 마법사. */
