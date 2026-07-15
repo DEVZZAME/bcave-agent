@@ -5,6 +5,7 @@ import { glob } from "glob";
 import XLSX from "xlsx";
 import { BCAVE_CI, BCAVE_LOGO_DATA_URI } from "../kickstart/brand.js";
 import { DS_STYLES } from "../kickstart/ds-styles.js";
+import { CHARTJS_SOURCE } from "../assets/chartjs.js";
 import type { PermissionCategory } from "./permissions.js";
 
 export interface ToolDefinition {
@@ -213,6 +214,14 @@ export async function executeTool(
         }
         // {{BCAVE_DS:<profile>}} → 해당 프로필 디자인시스템 CSS
         content = content.replace(/\{\{BCAVE_DS:([\w-]+)\}\}/g, (_m, id) => DS_STYLES[id] ?? "");
+        // 완전한 단일 파일: Chart.js 자리표시자·CDN <script> 를 인라인 소스로 치환(오프라인 가능)
+        if (content.includes("{{BCAVE_CHARTJS}}")) {
+          content = content.split("{{BCAVE_CHARTJS}}").join(CHARTJS_SOURCE);
+        }
+        content = content.replace(
+          /<script\b[^>]*\bsrc="[^"]*chart[^"]*"[^>]*>\s*<\/script>/gi,
+          `<script>${CHARTJS_SOURCE}</script>`,
+        );
         fs.mkdirSync(path.dirname(filePath), { recursive: true });
         fs.writeFileSync(filePath, content, "utf-8");
         return `File written: ${args.path}`;
