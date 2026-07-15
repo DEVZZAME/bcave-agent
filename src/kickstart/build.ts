@@ -2,6 +2,7 @@
 // (프롬프트 문자열만 만드는 순수 로직 — 실제 LLM 호출은 CLI 쪽에서.)
 
 import { DESIGN_COMMON, DESIGN_PROFILES } from "./design-systems.js";
+import { BCAVE_BRAND } from "./brand.js";
 
 // 유형별 "만드는 방법" 지시. 백엔드가 필요 없는 결과물은 프론트/파일 기반으로.
 const INSTRUCTIONS: Record<string, string> = {
@@ -81,6 +82,7 @@ export function generationPrompt(
     (INSTRUCTIONS[projectType] ?? INSTRUCTIONS.other) +
     (isVisual ? "\n\n" + DESIGN_COMMON : "") +
     (isVisual && profile ? "\n\n" + profile : "") +
+    (isVisual ? "\n\n" + BCAVE_BRAND : "") +
     (FONT_TYPES.has(projectType) ? PRETENDARD : "");
   const refBlock =
     referenceFiles && referenceFiles.trim()
