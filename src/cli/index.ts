@@ -6,19 +6,6 @@ import { ConversationManager, type AgentEvent, type ToolCallRequest } from "../a
 import { PermissionManager, type PermissionMode } from "../agent/permissions.js";
 import type { BcaveConfig } from "../config/config.js";
 import { hubLogin, hubLogout, hubListModels, hubUsage, type HubModel } from "../auth/hub.js";
-import {
-  runKickstart,
-  showKickstart,
-  editKickstart,
-  resetKickstart,
-  hasDraft,
-  buildPromptFor,
-  dashboardTargetFromSaved,
-  DESIGN_SYSTEM_Q,
-} from "../kickstart/index.js";
-import type { WizardIO, Answer, KickstartQuestion } from "../kickstart/types.js";
-import { buildDashboardSpec, renderDashboard } from "../kickstart/dashboard.js";
-import { readSpreadsheetRows, executeTool } from "../agent/tools.js";
 import fs from "node:fs";
 import { execSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -105,11 +92,6 @@ function cycleMode(): void {
 
 // ─── Slash Commands ────────────────────────────────────
 const COMMANDS = [
-  // 요구사항 수집 마법사 (정적, 토큰 0)
-  { name: "/dashboard", desc: "참고 파일·디자인만 골라 대시보드 생성" },
-  { name: "/kickstart", desc: "질문에 답하며 만들 것을 정리 (토큰 0)" },
-  { name: "/build", desc: "저장된 기획으로 바로 다시 생성" },
-  // 유틸리티
   { name: "/model", desc: "모델 선택" },
   { name: "/usage", desc: "사용량/한도 확인" },
   { name: "/login", desc: "사내 계정 로그인" },
@@ -543,139 +525,6 @@ function askLine(query: string): Promise<string> {
   });
 }
 
-// ─── /kickstart 마법사 IO (정적, 토큰 0) ────────────────
-// 선택형: ↑↓/숫자/Enter, Space(복수), ← 이전, Esc 취소. 텍스트: 입력/:b/:q.
-function wizardSelect(
-  options: { label: string; value: string }[],
-  multi: boolean,
-): Promise<Answer> {
-  return new Promise((resolve) => {
-    selectorActive = true;
-    let sel = 0;
-    const chosen = new Set<number>();
-    const count = options.length;
-    const totalLines = count + 1; // 옵션들 + 안내줄
-    const cols = () => (process.stdout.columns || 80) - 1;
-    const trunc = (s: string, m: number) => truncWidth(s, m);
-    const footer = multi
-      ? "↑↓ 이동 · Space 선택 · Enter 확정 · ← 이전 · Esc 취소"
-      : "↑↓ 이동 · Enter 선택 · 숫자 · ← 이전 · Esc 취소";
-    const lineText = (i: number): string => {
-      const mark = multi ? (chosen.has(i) ? "◉ " : "◯ ") : "";
-      const prefix = i === sel ? "  › " : "    ";
-      const full = prefix + mark + trunc(options[i].label, cols() - prefix.length - mark.length);
-      return i === sel ? chalk.cyan(full) : chalk.dim(full);
-    };
-    let drawn = false;
-    const render = () => {
-      if (drawn) process.stdout.write(`\x1b[${totalLines}A`);
-      for (let i = 0; i < count; i++) process.stdout.write("\r\x1b[2K" + lineText(i) + "\n");
-      process.stdout.write("\r\x1b[2K" + chalk.dim("  " + footer) + "\n");
-      drawn = true;
-    };
-    const clear = () => {
-      process.stdout.write(`\x1b[${totalLines}A`);
-      for (let i = 0; i < totalLines; i++) process.stdout.write("\r\x1b[2K\n");
-      process.stdout.write(`\x1b[${totalLines}A`);
-    };
-    render();
-    const done = (ans: Answer) => {
-      process.stdin.removeListener("keypress", onKey);
-      clear();
-      // readline 이 처리한 키(숫자 등)가 다음 텍스트 입력으로 새지 않도록 버퍼 비움
-      const rlAny = rl as unknown as { line: string; cursor: number };
-      rlAny.line = "";
-      rlAny.cursor = 0;
-      selectorActive = false;
-      resolve(ans);
-    };
-    const onKey = (str: string, key: readline.Key) => {
-      if (!key) return;
-      if (key.name === "up") { sel = (sel - 1 + count) % count; render(); }
-      else if (key.name === "down") { sel = (sel + 1) % count; render(); }
-      else if (key.name === "left") { done({ kind: "back" }); }
-      else if (key.name === "escape") { done({ kind: "cancel" }); }
-      else if (key.name === "space" && multi) {
-        chosen.has(sel) ? chosen.delete(sel) : chosen.add(sel);
-        render();
-      } else if (key.name === "return") {
-        if (multi) done({ kind: "value", value: [...chosen].sort((a, b) => a - b).map((i) => options[i].value) });
-        else done({ kind: "value", value: options[sel].value });
-      } else if (str >= "1" && str <= String(Math.min(9, count))) {
-        const i = parseInt(str) - 1;
-        if (multi) { chosen.has(i) ? chosen.delete(i) : chosen.add(i); sel = i; render(); }
-        else done({ kind: "value", value: options[i].value });
-      }
-    };
-    process.stdin.on("keypress", onKey);
-  });
-}
-
-async function wizardText(q: KickstartQuestion): Promise<Answer> {
-  const hint = q.optional
-    ? "(빈 값 = 건너뛰기 · :b 이전 · :q 취소)"
-    : "(:b 이전 · :q 취소)";
-  console.log("  " + chalk.dim(hint));
-  while (true) {
-    const raw = (await askLine(chalk.dim("  > "))).trim();
-    if (raw === ":q") return { kind: "cancel" };
-    if (raw === ":b") return { kind: "back" };
-    if (raw === "") {
-      if (q.optional) return { kind: "unknown" };
-      console.log("  " + chalk.dim("값을 입력해주세요."));
-      continue;
-    }
-    if (q.type === "date" && !/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
-      console.log("  " + chalk.dim("YYYY-MM-DD 형식으로 입력해주세요."));
-      continue;
-    }
-    return { kind: "value", value: raw };
-  }
-}
-
-const wizardIO: WizardIO = {
-  print(text: string): void {
-    console.log("");
-    for (const line of text.split("\n")) console.log("  " + line);
-    console.log("");
-  },
-  async ask(q, ctx): Promise<Answer> {
-    const header = ctx.total > 1 ? `[${ctx.step}/${ctx.total}] ${q.message}` : q.message;
-    console.log("");
-    console.log("  " + chalk.bold(header));
-    if (q.description) {
-      for (const line of q.description.split("\n")) console.log("  " + chalk.dim(line));
-    }
-    if (q.type === "single_select") return wizardSelect(q.options ?? [], false);
-    if (q.type === "multi_select") return wizardSelect(q.options ?? [], true);
-    return wizardText(q);
-  },
-  async finalAction(summary: string): Promise<number> {
-    console.log("");
-    for (const line of summary.split("\n")) console.log("  " + line);
-    console.log("");
-    const items = [
-      "1. 이 내용으로 확정",
-      "2. 특정 항목 수정",
-      "3. 처음부터 다시 작성",
-      "4. 취소",
-    ].map((l) => ({ label: l, dimLabel: l }));
-    const idx = await showSelector(items);
-    return idx < 0 ? 3 : idx; // Esc → 취소
-  },
-  async confirm(message: string, defaultYes = false): Promise<boolean> {
-    console.log("");
-    console.log("  " + message);
-    console.log("");
-    const items = [
-      { label: "예", dimLabel: "예" },
-      { label: "아니오", dimLabel: "아니오" },
-    ];
-    const idx = await showSelector(items, defaultYes ? 0 : 1);
-    return idx === 0; // Esc(-1) → 아니오
-  },
-};
-
 /**
  * 사내 계정 로그인. 성공 시 토큰 저장 + CM 재생성.
  * cancellable=true 면 빈 이메일 입력으로 취소 가능.
@@ -801,133 +650,6 @@ function showHelp(): void {
   console.log("");
 }
 
-// /kickstart 확정 후: 정리된 기획으로 실제 결과물을 지금 만들지 물어보고, 예 면 AI 로 생성.
-async function offerBuild(cwd: string): Promise<void> {
-  // 데이터 대시보드 + 스프레드시트 참고파일이면 결정론적 엔진으로 (LLM 미사용, 품질 일정).
-  const dashTarget = dashboardTargetFromSaved(cwd);
-  if (dashTarget) {
-    const go = await wizardIO.confirm("정리된 내용으로 지금 바로 대시보드를 만들어드릴까요?", true);
-    if (!go) {
-      console.log(chalk.dim("  알겠습니다. /build 로 언제든 만들 수 있어요."));
-      return;
-    }
-    await generateDashboardFile(dashTarget.file, dashTarget.designSystem);
-    return;
-  }
-  const prompt = buildPromptFor(cwd);
-  if (!prompt) return;
-  const go = await wizardIO.confirm("정리된 내용으로 지금 바로 만들어드릴까요? (AI가 결과물을 생성합니다)", true);
-  if (!go) {
-    console.log(chalk.dim("  알겠습니다. 저장된 기획(.agent/kickstart.md)을 바탕으로 언제든 만들 수 있어요."));
-    return;
-  }
-  if (!cm) {
-    console.log(chalk.dim("  결과물 생성은 로그인이 필요합니다. /login 후 다시 시도하세요."));
-    return;
-  }
-  abortController = new AbortController();
-  await processAgentEvents(cm.run(prompt, abortController.signal));
-}
-
-// 저장된 기획(.agent/kickstart.json)으로 바로 (재)생성 — 마법사 다시 안 거침.
-async function buildFromSaved(cwd: string): Promise<void> {
-  // 데이터 대시보드 + 스프레드시트 참고파일이면 결정론적 엔진으로 (LLM 미사용, 품질 일정).
-  const dashTarget = dashboardTargetFromSaved(cwd);
-  if (dashTarget) {
-    console.log(chalk.dim("  저장된 기획(데이터 대시보드)으로 만듭니다…"));
-    await generateDashboardFile(dashTarget.file, dashTarget.designSystem);
-    return;
-  }
-  const prompt = buildPromptFor(cwd);
-  if (!prompt) {
-    console.log(chalk.dim("  저장된 기획이 없습니다. 먼저 /kickstart 로 정리하세요."));
-    return;
-  }
-  if (!cm) {
-    console.log(chalk.dim("  결과물 생성은 로그인이 필요합니다. /login 후 다시 시도하세요."));
-    return;
-  }
-  console.log(chalk.dim("  저장된 기획으로 다시 만듭니다…"));
-  abortController = new AbortController();
-  await processAgentEvents(cm.run(prompt, abortController.signal));
-}
-
-// /dashboard — 참고 파일 + 디자인시스템만 골라 바로 대시보드 생성 (결정론적 엔진: LLM 미사용).
-async function dashboardCommand(): Promise<void> {
-  console.log("");
-  console.log("  " + chalk.bold("데이터 대시보드 만들기"));
-  console.log("  " + chalk.dim("데이터를 코드가 분석해 검증된 템플릿으로 만듭니다 (토큰 0)."));
-  console.log("");
-  let file = (await askLine(chalk.dim("  데이터 파일 경로 (엑셀/CSV) > "))).trim();
-  if (!file) {
-    console.log(chalk.dim("  취소했습니다."));
-    return;
-  }
-  file = file.replace(/^['"]|['"]$/g, "").replace(/^~/, process.env.HOME ?? "~");
-  if (!nodePath.isAbsolute(file)) file = nodePath.resolve(process.cwd(), file);
-  if (!fs.existsSync(file)) {
-    console.log(chalk.red("  파일을 찾을 수 없습니다: ") + file);
-    return;
-  }
-
-  console.log("");
-  console.log("  " + chalk.bold("어떤 디자인으로 만들까요?"));
-  const opts = (DESIGN_SYSTEM_Q.options ?? []) as { label: string; value: string }[];
-  const idx = await showSelector(
-    opts.map((o) => ({ label: o.label, dimLabel: o.label })),
-    0,
-  );
-  if (idx < 0) {
-    console.log(chalk.dim("  취소했습니다."));
-    return;
-  }
-  const ds = opts[idx].value === "auto" ? "apple" : opts[idx].value;
-  console.log("  " + chalk.cyan("선택: ") + opts[idx].label);
-  await generateDashboardFile(file, ds);
-}
-
-/** 결정론적 대시보드 엔진: 데이터 프로파일링 → 스펙 → 검증된 템플릿으로 조립 → 저장·검토. LLM 미사용. */
-async function generateDashboardFile(rawFile: string, designSystem: string): Promise<boolean> {
-  let file = rawFile.replace(/^['"]|['"]$/g, "").replace(/^~/, process.env.HOME ?? "~");
-  if (!nodePath.isAbsolute(file)) file = nodePath.resolve(process.cwd(), file);
-  if (!fs.existsSync(file)) {
-    console.log(chalk.red("  파일을 찾을 수 없습니다: ") + file);
-    return false;
-  }
-  const ds = designSystem && designSystem !== "auto" ? designSystem : "apple";
-  try {
-    // 1) 데이터 읽기 → 코드로 프로파일링 → 스펙 생성
-    const { rows, sheet } = readSpreadsheetRows(file);
-    if (!rows.length) {
-      console.log(chalk.red("  데이터가 비어 있습니다: ") + file);
-      return false;
-    }
-    const title = nodePath.basename(file, nodePath.extname(file));
-    const spec = buildDashboardSpec(rows, title);
-    console.log(
-      chalk.dim(
-        `  분석: ${rows.length}행 · 시트 "${sheet}" · KPI ${spec.kpis.length}개 · 차트 ${spec.charts.length}개 (${spec.charts.map((c) => c.col).join(", ") || "없음"})`,
-      ),
-    );
-
-    // 2) 템플릿으로 HTML 조립 → write_file (CSS·데이터 자리표시자 주입 + 자동 검토)
-    const html = renderDashboard(ds, file, spec, sheet);
-    const outPath = nodePath.join(nodePath.dirname(file), `${title}-dashboard.html`);
-    const res = await executeTool("write_file", { path: outPath, content: html }, process.cwd());
-    const kb = fs.existsSync(outPath) ? Math.round(fs.statSync(outPath).size / 1024) : 0;
-    if (res.includes("검토 통과") || !res.includes("⚠")) {
-      console.log(chalk.green("  ✓ 완성: ") + outPath + chalk.dim(` (${kb}KB, 검토 통과)`));
-    } else {
-      console.log(chalk.yellow("  ⚠ 생성했지만 검토 경고: ") + outPath);
-      console.log(chalk.dim("    " + res.split("\n").slice(1, 3).join(" ")));
-    }
-    return true;
-  } catch (e) {
-    console.log(chalk.red("  대시보드 생성 실패: ") + (e as Error).message);
-    return false;
-  }
-}
-
 async function handleSlashCommand(text: string): Promise<boolean> {
   const trimmed = text.trim();
 
@@ -962,37 +684,6 @@ async function handleSlashCommand(text: string): Promise<boolean> {
   }
 
   if (trimmed === "/mode") { cycleMode(); return true; }
-
-  // /dashboard — 참고 파일·디자인만 골라 대시보드 생성
-  if (trimmed === "/dashboard") { await dashboardCommand(); return true; }
-
-  // /build — 저장된 기획으로 바로 다시 생성
-  if (trimmed === "/build") { await buildFromSaved(process.cwd()); return true; }
-
-  // /kickstart — 정적(토큰 0) 요구사항 수집 마법사 + 하위명령
-  if (trimmed === "/kickstart" || trimmed.startsWith("/kickstart ")) {
-    const sub = trimmed.slice("/kickstart".length).trim();
-    const cwd = process.cwd();
-    if (sub === "show") { showKickstart(wizardIO, cwd); return true; }
-    if (sub === "reset") { await resetKickstart(wizardIO, cwd); return true; }
-    if (sub === "edit") { await editKickstart(wizardIO, cwd); return true; }
-    if (sub === "resume") { await runKickstart(wizardIO, cwd, { resume: true }); return true; }
-    if (sub === "build") { await buildFromSaved(cwd); return true; }
-    if (sub && sub !== "new") {
-      console.log(chalk.dim("  사용법: /kickstart [show|edit|reset|resume|build]"));
-      return true;
-    }
-    // 인자 없음: 중단된 초안이 있으면 이어서 할지 물어봄
-    let outcome;
-    if (hasDraft(cwd)) {
-      const resume = await wizardIO.confirm("이어서 진행할 내용이 있습니다. 이어서 할까요? (아니오 = 새로 시작)", true);
-      outcome = await runKickstart(wizardIO, cwd, { resume });
-    } else {
-      outcome = await runKickstart(wizardIO, cwd);
-    }
-    if (outcome === "confirmed") await offerBuild(cwd);
-    return true;
-  }
 
   // Only treat as unknown command if it looks like a slash command, not a file path
   if (trimmed.startsWith("/") && /^\/[a-z-]+$/i.test(trimmed.split(" ")[0]) && !trimmed.includes("/", 1)) {

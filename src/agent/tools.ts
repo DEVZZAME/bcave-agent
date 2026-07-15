@@ -179,29 +179,6 @@ function spreadsheetToJSON(filePath: string, sheet?: string): string {
   }
 }
 
-/** 스프레드시트를 행 객체 배열로 반환 (프로파일링용). 시트 미지정 시 데이터가 가장 많은 시트를 고른다. */
-export function readSpreadsheetRows(
-  filePath: string,
-  sheet?: string,
-): { rows: Record<string, unknown>[]; sheet: string; sheets: string[] } {
-  const wb = XLSX.read(fs.readFileSync(filePath), { type: "buffer", cellDates: true });
-  let name = sheet && wb.Sheets[sheet] ? sheet : wb.SheetNames[0];
-  if (!sheet) {
-    let best = -1;
-    for (const s of wb.SheetNames) {
-      const ws = wb.Sheets[s];
-      const range = ws["!ref"] ? XLSX.utils.decode_range(ws["!ref"]) : null;
-      const n = range ? range.e.r - range.s.r : 0;
-      if (n > best) { best = n; name = s; }
-    }
-  }
-  const rows = XLSX.utils.sheet_to_json(wb.Sheets[name], {
-    defval: null,
-    raw: false,
-  }) as Record<string, unknown>[];
-  return { rows, sheet: name, sheets: wb.SheetNames };
-}
-
 /** 텍스트로 보기 어려운 바이너리 데이터인지 판별 (NUL·제어문자·깨진문자 비율). */
 function looksBinary(text: string): boolean {
   if (text.length === 0) return false;
