@@ -39,9 +39,6 @@ const dashboard: ProjectSchema = {
       o("경영진", "exec"), o("고객", "customer"), o("여러 사람이 함께", "multiple"), U ] },
     { id: "keyMetrics", type: "text", optional: true, message: "가장 중요하게 확인해야 하는 수치는 무엇인가요?",
       description: "예: 오늘 매출, 전월 대비 증가율, 신규 회원 수, 미완료 업무 수, 광고 효율 (직접 입력하거나 건너뛸 수 있어요)" },
-    { id: "refreshCycle", type: "single_select", message: "데이터를 얼마나 자주 업데이트해야 하나요?", options: [
-      o("실시간", "realtime"), o("몇 분마다", "minutes"), o("매시간", "hourly"), o("하루 한 번", "daily"),
-      o("사용자가 파일을 올릴 때만", "onupload"), o("아직 정하지 않았어요", "undecided") ] },
     { id: "visualizations", type: "multi_select", message: "어떤 형태로 보고 싶으신가요? (여러 개 선택 가능)", options: [
       o("핵심 숫자 카드", "cards"), o("막대그래프", "bar"), o("선그래프", "line"), o("원형그래프", "pie"),
       o("표", "table"), o("지도", "map"), o("순위", "ranking"), o("알림 또는 경고", "alerts"), U ] },

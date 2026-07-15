@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { exec } from "node:child_process";
 import { glob } from "glob";
+import XLSX from "xlsx";
 import type { PermissionCategory } from "./permissions.js";
 
 export interface ToolDefinition {
@@ -131,6 +132,24 @@ function truncate(text: string, max: number, why = "생략"): string {
   );
 }
 
+// 표 형태 스프레드시트 — 바이너리지만 CSV(텍스트)로 변환해 읽을 수 있다.
+const SPREADSHEET_EXT = new Set([".xlsx", ".xls", ".xlsm", ".xlsb", ".ods"]);
+
+/** 엑셀 등 스프레드시트를 시트별 CSV 텍스트로 변환. */
+function readSpreadsheet(filePath: string, displayPath: string): string {
+  const wb = XLSX.read(fs.readFileSync(filePath), { type: "buffer", cellDates: true });
+  const parts: string[] = [];
+  for (const name of wb.SheetNames) {
+    const csv = XLSX.utils.sheet_to_csv(wb.Sheets[name], { blankrows: false });
+    if (csv.trim()) parts.push(`# 시트: ${name}\n${csv}`);
+  }
+  const body = parts.join("\n\n") || "(빈 스프레드시트)";
+  return (
+    `[엑셀 파일을 표(CSV)로 변환해 읽었습니다: ${displayPath}]\n\n` +
+    truncate(body, MAX_READ_CHARS, "표가 큼(앞부분만)")
+  );
+}
+
 /** 텍스트로 보기 어려운 바이너리 데이터인지 판별 (NUL·제어문자·깨진문자 비율). */
 function looksBinary(text: string): boolean {
   if (text.length === 0) return false;
@@ -154,6 +173,10 @@ export async function executeTool(
     switch (name) {
       case "read_file": {
         const filePath = path.resolve(cwd, args.path as string);
+        // 엑셀 등 스프레드시트는 표(CSV)로 변환해서 읽는다.
+        if (SPREADSHEET_EXT.has(path.extname(filePath).toLowerCase())) {
+          return readSpreadsheet(filePath, args.path as string);
+        }
         let content: string;
         let partial = false;
         // 거대 파일은 통째로 메모리에 올리지 않고 앞부분만 읽는다.
@@ -167,9 +190,9 @@ export async function executeTool(
         } else {
           content = fs.readFileSync(filePath, "utf-8");
         }
-        // 엑셀(.xlsx)·이미지 등 바이너리는 원문을 내보내지 않는다 (화면 깨짐·토큰 낭비 방지).
+        // 이미지 등 바이너리는 원문을 내보내지 않는다 (화면 깨짐·토큰 낭비 방지).
         if (looksBinary(content)) {
-          return `[바이너리 파일이라 텍스트로 열 수 없습니다: ${args.path}\n(엑셀/이미지/압축 파일 등은 내용을 직접 읽을 수 없습니다. 필요하면 어떤 데이터인지 사용자에게 물어보거나 적절한 도구/라이브러리로 처리하세요.)]`;
+          return `[바이너리 파일이라 텍스트로 열 수 없습니다: ${args.path}\n(이미지/압축/실행 파일 등은 내용을 직접 읽을 수 없습니다. 필요하면 어떤 데이터인지 사용자에게 물어보거나 적절한 도구/라이브러리로 처리하세요.)]`;
         }
         return truncate(content, MAX_READ_CHARS, partial ? "파일이 큼(앞부분만)" : "파일이 큼");
       }

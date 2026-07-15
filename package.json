@@ -24,7 +24,8 @@
     "ink-text-input": "^6.0.0",
     "meow": "^14.1.0",
     "openai": "^6.46.0",
-    "react": "^19.2.7"
+    "react": "^19.2.7",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@types/node": "^26.1.1",
