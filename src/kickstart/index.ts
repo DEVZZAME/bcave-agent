@@ -265,6 +265,20 @@ export function hasDraft(cwd: string): boolean {
   return store.loadDraft(cwd) !== null;
 }
 
+/** /dashboard 용 디자인시스템 선택지 (마법사와 동일). */
+export { DESIGN_SYSTEM_Q } from "./schemas.js";
+
+/** /dashboard — 참고 파일 + 디자인시스템만으로 바로 대시보드 생성 프롬프트를 만든다. */
+export function dashboardPrompt(referenceFile: string, designSystem: string): string {
+  const ds = designSystem && designSystem !== "auto" ? designSystem : undefined;
+  const brief =
+    "데이터 대시보드\n" +
+    `- 참고 파일: ${referenceFile}\n` +
+    `- 디자인: ${ds ?? "기획에 맞게"}\n` +
+    "- 참고 파일의 실제 컬럼을 기준으로 핵심 수치·분포·전체 목록을 한 화면에 보여주기";
+  return generationPrompt("dashboard", brief, ds, referenceFile);
+}
+
 /** 저장된 기획을 "실제 결과물 생성" 프롬프트로 변환 (LLM 에 넘길 문자열). 없으면 null. */
 export function buildPromptFor(cwd: string): string | null {
   const rec = store.loadFinal(cwd);

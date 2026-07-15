@@ -15,10 +15,12 @@ function dsUsageVerbatim(id: string): string {
     sec("overview", `<div class="${w.grid}"><div class="card">…KPI…</div>…</div>`) +
     sec("charts", `<div class="${w.grid}"><div class="card"><div style="position:relative;height:300px"><canvas></canvas></div></div>…</div>`) +
     sec("table", `<div class="card">…표(전체 데이터·검색·페이지네이션)…</div>`);
+  const inO = w.inner ? `<div class="${w.inner}">` : "";
+  const inC = w.inner ? "</div>" : "";
   const body =
     w.shape === "side"
-      ? `<div class="${w.wrapper}">{{BCAVE_DS_NAV:${id}}}<main class="${w.main}">${content}</main></div>`
-      : `{{BCAVE_DS_NAV:${id}}}<main class="${w.main}">${content}</main>`;
+      ? `<div class="${w.wrapper}">{{BCAVE_DS_NAV:${id}}}<main class="${w.main}">${inO}${content}${inC}</main></div>`
+      : `{{BCAVE_DS_NAV:${id}}}<main class="${w.main}">${inO}${content}${inC}</main>`;
   const shapeNote =
     w.shape === "side"
       ? "이 디자인시스템은 **좌측 사이드바** 구조다(위 래퍼 그대로)."

@@ -13,6 +13,8 @@ import {
   resetKickstart,
   hasDraft,
   buildPromptFor,
+  dashboardPrompt,
+  DESIGN_SYSTEM_Q,
 } from "../kickstart/index.js";
 import type { WizardIO, Answer, KickstartQuestion } from "../kickstart/types.js";
 import fs from "node:fs";
@@ -102,6 +104,7 @@ function cycleMode(): void {
 // ─── Slash Commands ────────────────────────────────────
 const COMMANDS = [
   // 요구사항 수집 마법사 (정적, 토큰 0)
+  { name: "/dashboard", desc: "참고 파일·디자인만 골라 대시보드 생성" },
   { name: "/kickstart", desc: "질문에 답하며 만들 것을 정리 (토큰 0)" },
   { name: "/build", desc: "저장된 기획으로 바로 다시 생성" },
   // 유틸리티
@@ -803,6 +806,37 @@ async function buildFromSaved(cwd: string): Promise<void> {
   await processAgentEvents(cm.run(prompt, abortController.signal));
 }
 
+// /dashboard — 참고 파일 + 디자인시스템만 골라 바로 대시보드 생성 (마법사 생략).
+async function dashboardCommand(): Promise<void> {
+  if (!cm) {
+    console.log(chalk.dim("  로그인이 필요합니다. /login 후 다시 시도하세요."));
+    return;
+  }
+  console.log("");
+  console.log("  " + chalk.bold("데이터 대시보드 만들기"));
+  console.log("  " + chalk.dim("참고할 데이터 파일과 디자인만 고르면 됩니다."));
+  console.log("");
+  const file = (await askLine(chalk.dim("  데이터 파일 경로 (엑셀/CSV) > "))).trim();
+  if (!file) {
+    console.log(chalk.dim("  취소했습니다."));
+    return;
+  }
+  console.log("");
+  console.log("  " + chalk.bold("어떤 디자인으로 만들까요?"));
+  const opts = (DESIGN_SYSTEM_Q.options ?? []) as { label: string; value: string }[];
+  const idx = await showSelector(
+    opts.map((o) => ({ label: o.label, dimLabel: o.label })),
+    0,
+  );
+  if (idx < 0) {
+    console.log(chalk.dim("  취소했습니다."));
+    return;
+  }
+  console.log(chalk.dim("  대시보드를 만듭니다…"));
+  abortController = new AbortController();
+  await processAgentEvents(cm.run(dashboardPrompt(file, opts[idx].value), abortController.signal));
+}
+
 async function handleSlashCommand(text: string): Promise<boolean> {
   const trimmed = text.trim();
 
@@ -837,6 +871,9 @@ async function handleSlashCommand(text: string): Promise<boolean> {
   }
 
   if (trimmed === "/mode") { cycleMode(); return true; }
+
+  // /dashboard — 참고 파일·디자인만 골라 대시보드 생성
+  if (trimmed === "/dashboard") { await dashboardCommand(); return true; }
 
   // /build — 저장된 기획으로 바로 다시 생성
   if (trimmed === "/build") { await buildFromSaved(process.cwd()); return true; }
