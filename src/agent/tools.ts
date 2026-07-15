@@ -239,6 +239,46 @@ function resolvePlaceholders(content: string, cwd: string): string {
   return content;
 }
 
+// 내보내기 전 HTML 자동 검토: 데이터 누락·자리표시자·인라인 스크립트 문법 오류를 잡는다.
+function reviewHtml(content: string, filePath: string): string[] {
+  if (!/\.html?$/i.test(filePath)) return [];
+  const issues: string[] = [];
+  // 1) 미해결 자리표시자
+  const ph = content.match(/\{\{[A-Za-z_][^}]*\}\}/g);
+  if (ph) issues.push(`치환되지 않은 자리표시자: ${[...new Set(ph)].slice(0, 3).join(", ")}`);
+  // 2) 빈 데이터 배열
+  if (
+    /window\.__DATA\s*=\s*\[\s*\]/.test(content) ||
+    /\b(?:const|let|var)\s+\w*[Dd]ata\w*\s*=\s*\[\s*\]\s*[;,]/.test(content) ||
+    /["']?rows["']?\s*:\s*\[\s*\]/.test(content)
+  ) {
+    issues.push(
+      "데이터 배열이 비어 있습니다(예: window.__DATA=[]). `{{BCAVE_DATA:<데이터파일 절대경로>}}` 로 실제 데이터를 넣고 경로가 정확한지 확인하세요.",
+    );
+  }
+  // 3) 차트/표가 있는데 데이터 소스가 전혀 없음
+  const hasVisual = /<canvas|<tbody|<table/i.test(content);
+  const hasData = /window\.__DATA|[Dd]ata\s*=\s*\[\s*\{/.test(content);
+  if (hasVisual && !hasData) {
+    issues.push("차트/표가 있는데 데이터가 없습니다. `{{BCAVE_DATA:경로}}` 로 데이터를 주입하세요.");
+  }
+  // 4) 인라인 스크립트 문법 검사 (벤더 Chart.js·거대 데이터 스크립트 제외)
+  const scripts = content.match(/<script>[\s\S]*?<\/script>/g) || [];
+  for (const block of scripts) {
+    const js = block.slice(8, -9);
+    if (js.length > 60000 || js.includes("Chart.js v") || /^\s*window\.__DATA\s*=/.test(js)) continue;
+    if (!js.trim()) continue;
+    try {
+      // 파싱만 (실행 아님) — 따옴표 키 오타 등 문법 오류를 잡는다.
+      new Function(js);
+    } catch (e) {
+      issues.push(`스크립트 문법 오류: ${(e as Error).message} (표·차트가 안 나오는 원인)`);
+      break;
+    }
+  }
+  return issues;
+}
+
 // 스크립트(shell_exec)가 써낸 HTML 에 남은 자리표시자를 사후 치환 (write_file 툴 우회 대비).
 async function resolvePlaceholdersInDir(cwd: string): Promise<void> {
   let files: string[] = [];
@@ -295,11 +335,20 @@ export async function executeTool(
       }
       case "write_file": {
         const filePath = path.resolve(cwd, args.path as string);
-        // CI·디자인시스템·Chart.js 자리표시자 → 실제 리소스로 치환 (프롬프트 토큰 절약)
+        // CI·디자인시스템·데이터·Chart.js 자리표시자 → 실제 리소스로 치환 (프롬프트 토큰 절약)
         const content = resolvePlaceholders(args.content as string, cwd);
         fs.mkdirSync(path.dirname(filePath), { recursive: true });
         fs.writeFileSync(filePath, content, "utf-8");
-        return `File written: ${args.path}`;
+        // 내보내기 전 자동 검토 (데이터 누락·자리표시자·문법). 문제가 있으면 모델이 고쳐 다시 쓰게 알린다.
+        const issues = reviewHtml(content, args.path as string);
+        if (issues.length) {
+          return (
+            `File written: ${args.path}\n` +
+            `⚠ 내보내기 검토에서 문제가 발견됐습니다. 아래를 고쳐 같은 파일에 다시 저장하세요:\n` +
+            issues.map((s) => "  - " + s).join("\n")
+          );
+        }
+        return `File written: ${args.path} (검토 통과)`;
       }
       case "list_files": {
         const dirPath = path.resolve(cwd, args.path as string);
