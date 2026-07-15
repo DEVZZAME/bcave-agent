@@ -7,6 +7,14 @@ import { PermissionManager, type PermissionMode } from "../agent/permissions.js"
 import type { BcaveConfig } from "../config/config.js";
 import { hubLogin, hubLogout, hubListModels, hubUsage, type HubModel } from "../auth/hub.js";
 import { KICKSTART_COMMANDS, findKickstartCommand } from "../agent/commands.js";
+import {
+  runKickstart,
+  showKickstart,
+  editKickstart,
+  resetKickstart,
+  hasDraft,
+} from "../kickstart/index.js";
+import type { WizardIO, Answer, KickstartQuestion } from "../kickstart/types.js";
 import fs from "node:fs";
 
 // ─── CLI Args ──────────────────────────────────────────
@@ -86,6 +94,8 @@ function cycleMode(): void {
 
 // ─── Slash Commands ────────────────────────────────────
 const COMMANDS = [
+  // 요구사항 수집 마법사 (정적, 토큰 0)
+  { name: "/kickstart", desc: "질문에 답하며 만들 것을 정리 (토큰 0)" },
   // 초보자 온보딩 (프롬프트 커맨드)
   ...KICKSTART_COMMANDS.map((c) => ({ name: c.name, desc: c.desc })),
   // 유틸리티
@@ -139,6 +149,10 @@ async function showSelector(items: SelectorItem[], initialIndex = 0): Promise<nu
       process.stdout.write(`\x1b[${count}A`);
       for (let i = 0; i < count; i++) process.stdout.write("\r\x1b[2K\n");
       process.stdout.write(`\x1b[${count}A`);
+      // readline 이 처리한 키가 다음 입력으로 새지 않도록 버퍼 비움
+      const rlAny = rl as unknown as { line: string; cursor: number };
+      rlAny.line = "";
+      rlAny.cursor = 0;
     }
 
     render();
@@ -413,6 +427,132 @@ function askLine(query: string): Promise<string> {
   });
 }
 
+// ─── /kickstart 마법사 IO (정적, 토큰 0) ────────────────
+// 선택형: ↑↓/숫자/Enter, Space(복수), ← 이전, Esc 취소. 텍스트: 입력/:b/:q.
+function wizardSelect(
+  options: { label: string; value: string }[],
+  multi: boolean,
+): Promise<Answer> {
+  return new Promise((resolve) => {
+    selectorActive = true;
+    let sel = 0;
+    const chosen = new Set<number>();
+    const count = options.length;
+    const totalLines = count + 1; // 옵션들 + 안내줄
+    const cols = () => (process.stdout.columns || 80) - 1;
+    const trunc = (s: string, m: number) => (s.length > m ? s.slice(0, Math.max(1, m - 1)) + "…" : s);
+    const footer = multi
+      ? "↑↓ 이동 · Space 선택 · Enter 확정 · ← 이전 · Esc 취소"
+      : "↑↓ 이동 · Enter 선택 · 숫자 · ← 이전 · Esc 취소";
+    const lineText = (i: number): string => {
+      const mark = multi ? (chosen.has(i) ? "◉ " : "◯ ") : "";
+      const prefix = i === sel ? "  › " : "    ";
+      const full = prefix + mark + trunc(options[i].label, cols() - prefix.length - mark.length);
+      return i === sel ? chalk.cyan(full) : chalk.dim(full);
+    };
+    let drawn = false;
+    const render = () => {
+      if (drawn) process.stdout.write(`\x1b[${totalLines}A`);
+      for (let i = 0; i < count; i++) process.stdout.write("\r\x1b[2K" + lineText(i) + "\n");
+      process.stdout.write("\r\x1b[2K" + chalk.dim("  " + footer) + "\n");
+      drawn = true;
+    };
+    const clear = () => {
+      process.stdout.write(`\x1b[${totalLines}A`);
+      for (let i = 0; i < totalLines; i++) process.stdout.write("\r\x1b[2K\n");
+      process.stdout.write(`\x1b[${totalLines}A`);
+    };
+    render();
+    const done = (ans: Answer) => {
+      process.stdin.removeListener("keypress", onKey);
+      clear();
+      // readline 이 처리한 키(숫자 등)가 다음 텍스트 입력으로 새지 않도록 버퍼 비움
+      const rlAny = rl as unknown as { line: string; cursor: number };
+      rlAny.line = "";
+      rlAny.cursor = 0;
+      selectorActive = false;
+      resolve(ans);
+    };
+    const onKey = (str: string, key: readline.Key) => {
+      if (!key) return;
+      if (key.name === "up") { sel = (sel - 1 + count) % count; render(); }
+      else if (key.name === "down") { sel = (sel + 1) % count; render(); }
+      else if (key.name === "left") { done({ kind: "back" }); }
+      else if (key.name === "escape") { done({ kind: "cancel" }); }
+      else if (key.name === "space" && multi) {
+        chosen.has(sel) ? chosen.delete(sel) : chosen.add(sel);
+        render();
+      } else if (key.name === "return") {
+        if (multi) done({ kind: "value", value: [...chosen].sort((a, b) => a - b).map((i) => options[i].value) });
+        else done({ kind: "value", value: options[sel].value });
+      } else if (str >= "1" && str <= String(Math.min(9, count))) {
+        const i = parseInt(str) - 1;
+        if (multi) { chosen.has(i) ? chosen.delete(i) : chosen.add(i); sel = i; render(); }
+        else done({ kind: "value", value: options[i].value });
+      }
+    };
+    process.stdin.on("keypress", onKey);
+  });
+}
+
+async function wizardText(q: KickstartQuestion): Promise<Answer> {
+  const hint = q.optional
+    ? "(빈 값 = 건너뛰기 · :b 이전 · :q 취소)"
+    : "(:b 이전 · :q 취소)";
+  console.log("  " + chalk.dim(hint));
+  while (true) {
+    const raw = (await askLine(chalk.dim("  > "))).trim();
+    if (raw === ":q") return { kind: "cancel" };
+    if (raw === ":b") return { kind: "back" };
+    if (raw === "") {
+      if (q.optional) return { kind: "unknown" };
+      console.log("  " + chalk.dim("값을 입력해주세요."));
+      continue;
+    }
+    if (q.type === "date" && !/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+      console.log("  " + chalk.dim("YYYY-MM-DD 형식으로 입력해주세요."));
+      continue;
+    }
+    return { kind: "value", value: raw };
+  }
+}
+
+const wizardIO: WizardIO = {
+  print(text: string): void {
+    console.log("");
+    for (const line of text.split("\n")) console.log("  " + line);
+    console.log("");
+  },
+  async ask(q, ctx): Promise<Answer> {
+    const header = ctx.total > 1 ? `[${ctx.step}/${ctx.total}] ${q.message}` : q.message;
+    console.log("");
+    console.log("  " + chalk.bold(header));
+    if (q.description) {
+      for (const line of q.description.split("\n")) console.log("  " + chalk.dim(line));
+    }
+    if (q.type === "single_select") return wizardSelect(q.options ?? [], false);
+    if (q.type === "multi_select") return wizardSelect(q.options ?? [], true);
+    return wizardText(q);
+  },
+  async finalAction(summary: string): Promise<number> {
+    console.log("");
+    for (const line of summary.split("\n")) console.log("  " + line);
+    console.log("");
+    const items = [
+      "1. 이 내용으로 확정",
+      "2. 특정 항목 수정",
+      "3. 처음부터 다시 작성",
+      "4. 취소",
+    ].map((l) => ({ label: l, dimLabel: l }));
+    const idx = await showSelector(items);
+    return idx < 0 ? 3 : idx; // Esc → 취소
+  },
+  async confirm(message: string): Promise<boolean> {
+    const a = (await askLine("  " + message + chalk.dim(" [y/N] "))).trim().toLowerCase();
+    return a === "y" || a === "yes";
+  },
+};
+
 /**
  * 사내 계정 로그인. 성공 시 토큰 저장 + CM 재생성.
  * cancellable=true 면 빈 이메일 입력으로 취소 가능.
@@ -527,6 +667,28 @@ async function handleSlashCommand(text: string): Promise<boolean> {
   }
 
   if (trimmed === "/mode") { cycleMode(); return true; }
+
+  // /kickstart — 정적(토큰 0) 요구사항 수집 마법사 + 하위명령
+  if (trimmed === "/kickstart" || trimmed.startsWith("/kickstart ")) {
+    const sub = trimmed.slice("/kickstart".length).trim();
+    const cwd = process.cwd();
+    if (sub === "show") { showKickstart(wizardIO, cwd); return true; }
+    if (sub === "reset") { await resetKickstart(wizardIO, cwd); return true; }
+    if (sub === "edit") { await editKickstart(wizardIO, cwd); return true; }
+    if (sub === "resume") { await runKickstart(wizardIO, cwd, { resume: true }); return true; }
+    if (sub && sub !== "new") {
+      console.log(chalk.dim("  사용법: /kickstart [show|edit|reset|resume]"));
+      return true;
+    }
+    // 인자 없음: 중단된 초안이 있으면 이어서 할지 물어봄
+    if (hasDraft(cwd)) {
+      const resume = await wizardIO.confirm("이어서 진행할 내용이 있습니다. 이어서 할까요? (아니오 = 새로 시작)");
+      await runKickstart(wizardIO, cwd, { resume });
+    } else {
+      await runKickstart(wizardIO, cwd);
+    }
+    return true;
+  }
 
   // 초보자 온보딩 커맨드 — 해당 프롬프트를 에이전트에 주입해 가이드 시작
   const kick = findKickstartCommand(trimmed);
