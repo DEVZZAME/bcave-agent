@@ -4,9 +4,14 @@ import { exec } from "node:child_process";
 import { glob } from "glob";
 import XLSX from "xlsx";
 import { BCAVE_CI, BCAVE_LOGO_DATA_URI } from "../kickstart/brand.js";
-import { DS_STYLES } from "../kickstart/ds-styles.js";
+import { DS_STYLES, DS_LAYOUT } from "../kickstart/ds-styles.js";
 import { CHARTJS_SOURCE } from "../assets/chartjs.js";
 import type { PermissionCategory } from "./permissions.js";
+
+// Chart.js 로드 직후 적용할 전역 기본값: 항목이 적어도 막대가 카드 폭에 꽉 늘어나지 않게 두께 상한.
+const CHARTJS_DEFAULTS =
+  ";try{if(window.Chart){var _d=Chart.defaults;if(_d.datasets&&_d.datasets.bar){_d.datasets.bar.maxBarThickness=52;_d.datasets.bar.categoryPercentage=0.72;_d.datasets.bar.barPercentage=0.9;}_d.font.family=\"Pretendard,-apple-system,BlinkMacSystemFont,sans-serif\";}}catch(e){}";
+const CHARTJS_INLINE = `<script>${CHARTJS_SOURCE}${CHARTJS_DEFAULTS}</script>`;
 
 export interface ToolDefinition {
   type: "function";
@@ -173,14 +178,20 @@ function looksBinary(text: string): boolean {
   return bad / sample.length > 0.1;
 }
 
-/** CI 로고·디자인시스템 CSS·Chart.js 자리표시자(및 Chart.js CDN 태그)를 실제 리소스로 치환. */
+/** CI 로고·디자인시스템 CSS(+레이아웃 스캐폴드)·Chart.js 자리표시자를 실제 리소스로 치환. */
 function resolvePlaceholders(content: string): string {
   if (content.includes(BCAVE_CI)) content = content.split(BCAVE_CI).join(BCAVE_LOGO_DATA_URI);
-  content = content.replace(/\{\{BCAVE_DS:([\w-]+)\}\}/g, (_m, id) => DS_STYLES[id] ?? "");
-  if (content.includes("{{BCAVE_CHARTJS}}")) content = content.split("{{BCAVE_CHARTJS}}").join(CHARTJS_SOURCE);
+  // {{BCAVE_DS:id}} → 레이아웃 스캐폴드 + 프로필 디자인시스템 CSS
+  content = content.replace(/\{\{BCAVE_DS:([\w-]+)\}\}/g, (_m, id) =>
+    DS_STYLES[id] ? DS_LAYOUT + DS_STYLES[id] : "",
+  );
+  // Chart.js 자리표시자·CDN <script> → 인라인 소스(+기본값). 완전한 단일 파일·오프라인 가능.
+  if (content.includes("{{BCAVE_CHARTJS}}")) {
+    content = content.split("{{BCAVE_CHARTJS}}").join(CHARTJS_SOURCE + CHARTJS_DEFAULTS);
+  }
   content = content.replace(
     /<script\b[^>]*\bsrc="[^"]*chart[^"]*"[^>]*>\s*<\/script>/gi,
-    `<script>${CHARTJS_SOURCE}</script>`,
+    CHARTJS_INLINE,
   );
   return content;
 }
