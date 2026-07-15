@@ -2,8 +2,22 @@
 // (프롬프트 문자열만 만드는 순수 로직 — 실제 LLM 호출은 CLI 쪽에서.)
 
 import { DESIGN_COMMON, DESIGN_PROFILES } from "./design-systems.js";
-import { DS_CONTRACT, DS_SHAPE } from "./ds-styles.js";
+import { DS_CONTRACT, DS_SHAPE, DS_FULL } from "./ds-styles.js";
 import { BCAVE_BRAND } from "./brand.js";
+
+// 완전 동일(verbatim) 접근 지침: 디자인시스템 원본 nav·CSS·토글 JS 를 그대로 주입해 픽셀 동일하게.
+function dsUsageVerbatim(id: string): string {
+  return (
+    "[디자인시스템 완전 동일 — 원본과 픽셀 동일하게, 텍스트만 교체]\n" +
+    `1) <head> <style> 안에 정확히 \`{{BCAVE_DS:${id}}}\` 한 줄 → 원본 전체 CSS 자동 주입(토큰·다크모드·호버·애니메이션·반응형·컴포넌트 모두 포함). 추가 CSS 는 꼭 필요한 것만.\n` +
+    `2) <body> 최상단에 정확히 \`{{BCAVE_DS_NAV:${id}}}\` 한 줄 → 원본 상단 GNB + 다크모드 토글 스위치가 그대로 주입된다(브랜드=회사로고, 링크=개요/분포/목록 → #overview/#charts/#table 스크롤). 이 nav 를 직접 만들지 마라.\n` +
+    "3) 본문은 원본 구조 그대로: <div class=\"container\"> 안에 여러 <section class=\"section\">…</section>. 각 섹션은 <p class=\"section-eyebrow\">라벨</p><h2 class=\"section-title\">제목</h2><p class=\"section-desc\">설명</p> 로 시작. 섹션 id 는 overview/charts/table.\n" +
+    "4) KPI·차트·표는 원본 컴포넌트로: 카드 <div class=\"card\">, 배치 <div class=\"grid grid-3\">(또는 grid-2/grid-4), 버튼 <button class=\"btn btn-primary\">/.btn-secondary. 색·간격은 원본 클래스만, 하드코딩 hex·인라인 색 금지.\n" +
+    `5) </body> 직전에 정확히 \`{{BCAVE_DS_JS:${id}}}\` 한 줄 → 다크모드 토글 등 인터랙션이 동작한다.\n` +
+    "6) 차트: <head> 에 <script>{{BCAVE_CHARTJS}}</script>. 캔버스는 <div style=\"position:relative;height:300px\"><canvas></canvas></div>, options responsive:true,maintainAspectRatio:false. 시간추이=line, 비교=bar.\n" +
+    "로고는 nav 에 이미 있으니 본문에 또 넣지 마라. 첫 섹션(#overview)에 큰 제목으로 시작."
+  );
+}
 
 // 프로필별 레이아웃 마크업 (GNB=상단내비 / side=좌측 사이드바). 원본 디자인시스템 구조에 맞춤.
 const LAYOUT_GNB =
@@ -13,6 +27,8 @@ const LAYOUT_SIDE =
 
 // 디자인시스템 CSS 를 자리표시자로 주입시키는 사용 지침 (실제 CSS 는 write_file 가 치환 — 프롬프트 토큰 절약).
 function dsUsage(id: string): string {
+  // DS_FULL 프로필(원본 전체 CSS 보유)은 완전 동일 접근.
+  if (DS_FULL[id]) return dsUsageVerbatim(id);
   const shape = DS_SHAPE[id] === "side" ? "side" : "gnb";
   const shapeDesc =
     shape === "side"

@@ -4,7 +4,7 @@ import { exec } from "node:child_process";
 import { glob } from "glob";
 import XLSX from "xlsx";
 import { BCAVE_CI, BCAVE_LOGO_DATA_URI } from "../kickstart/brand.js";
-import { DS_STYLES, DS_LAYOUT } from "../kickstart/ds-styles.js";
+import { DS_STYLES, DS_LAYOUT, DS_FULL, DS_NAV, DS_JS } from "../kickstart/ds-styles.js";
 import { CHARTJS_SOURCE } from "../assets/chartjs.js";
 import type { PermissionCategory } from "./permissions.js";
 
@@ -178,24 +178,28 @@ function looksBinary(text: string): boolean {
   return bad / sample.length > 0.1;
 }
 
-/** CI 로고·디자인시스템 CSS(+레이아웃 스캐폴드)·Chart.js 자리표시자를 실제 리소스로 치환. */
+/** CI 로고·디자인시스템 CSS/nav/JS·Chart.js 자리표시자를 실제 리소스로 치환. */
 function resolvePlaceholders(content: string): string {
-  if (content.includes(BCAVE_CI)) content = content.split(BCAVE_CI).join(BCAVE_LOGO_DATA_URI);
-  // {{BCAVE_DS:id}} → 프로필 디자인시스템 CSS(토큰+컴포넌트)
+  // {{BCAVE_DS:id}} → 디자인시스템 CSS. DS_FULL(원본 전체)이 있으면 완전 동일, 없으면 DS_STYLES.
   let dsId = "";
+  let full = false;
   content = content.replace(/\{\{BCAVE_DS:([\w-]+)\}\}/g, (_m, id) => {
-    if (!DS_STYLES[id]) return "";
-    dsId = id;
-    return DS_STYLES[id];
+    if (DS_FULL[id]) { dsId = id; full = true; return DS_FULL[id]; }
+    if (DS_STYLES[id]) { dsId = id; return DS_STYLES[id]; }
+    return "";
   });
-  // 프로필별 레이아웃 스캐폴드(GNB/사이드바·컨테이너 폭)를 </head> 직전에 별도 <style> 로 주입
-  // → 모델이 .ds-* 를 재정의해도 소스 순서상 뒤라 레이아웃이 항상 이긴다.
-  if (dsId && DS_LAYOUT[dsId]) {
+  // 스캐폴드는 스트립 CSS 프로필에만 주입. DS_FULL 프로필은 원본 레이아웃이 이미 있음.
+  if (dsId && !full && DS_LAYOUT[dsId]) {
     const scaffold = `<style>${DS_LAYOUT[dsId]}</style>`;
     content = content.includes("</head>")
       ? content.replace("</head>", scaffold + "</head>")
       : scaffold + content;
   }
+  // 원본 nav 마크업 · 토글/인터랙션 JS (완전 동일 접근)
+  content = content.replace(/\{\{BCAVE_DS_NAV:([\w-]+)\}\}/g, (_m, id) => DS_NAV[id] ?? "");
+  content = content.replace(/\{\{BCAVE_DS_JS:([\w-]+)\}\}/g, (_m, id) =>
+    DS_JS[id] ? `<script>${DS_JS[id]}</script>` : "",
+  );
   // Chart.js 자리표시자·CDN <script> → 인라인 소스(+기본값). 완전한 단일 파일·오프라인 가능.
   if (content.includes("{{BCAVE_CHARTJS}}")) {
     content = content.split("{{BCAVE_CHARTJS}}").join(CHARTJS_SOURCE + CHARTJS_DEFAULTS);
@@ -204,6 +208,8 @@ function resolvePlaceholders(content: string): string {
     /<script\b[^>]*\bsrc="[^"]*chart[^"]*"[^>]*>\s*<\/script>/gi,
     CHARTJS_INLINE,
   );
+  // CI 로고는 마지막에 치환 → 모델 마크업 + 주입된 nav 안의 {{BCAVE_CI}} 모두 처리
+  if (content.includes(BCAVE_CI)) content = content.split(BCAVE_CI).join(BCAVE_LOGO_DATA_URI);
   return content;
 }
 
