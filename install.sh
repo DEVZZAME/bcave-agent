@@ -63,6 +63,8 @@ chmod +x dist/cli/index.js
 # .../.local/bin/bcave". 래퍼가 node 에게 설치 폴더 안의 실제 경로를 넘기면
 # 의존성 해석이 항상 $INSTALL_DIR/node_modules 로 향해 모든 OS 에서 동작한다.
 mkdir -p "$BIN_DIR"
+# 기존 심볼릭 링크가 있으면 제거 (심링크에 cat > 하면 원본을 덮어씀)
+rm -f "$BIN_DIR/bcave"
 cat > "$BIN_DIR/bcave" <<EOF
 #!/bin/sh
 exec node "$INSTALL_DIR/dist/cli/index.js" "\$@"
