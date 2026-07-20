@@ -106,9 +106,11 @@ export function buildSpec(cols: ColProfile[], title: string, rowCount: number): 
   const metric = pref(numerics, ["결제", "매출", "금액", "amount", "price", "revenue", "sales", "total"]) ?? numerics[0];
   const qty = pref(numerics, ["수량", "qty", "개수", "건수", "count", "quantity"]) ?? numerics.filter((c) => c !== metric).slice(-1)[0];
   const catsLow = cats.filter((c) => c.cardinality <= 12).sort((a, b) => a.cardinality - b.cardinality);
-  const entity =
-    pref(cats.concat(cols.filter((c) => c.kind === "text")), ["상품", "제품", "product", "품목", "name", "이름", "고객"]) ??
-    cats.filter((c) => c.cardinality >= 4 && c.cardinality <= 60).sort((a, b) => b.cardinality - a.cardinality)[0];
+  // 엔티티(상품카드·TOP 랭킹용): 값이 반복되는 범주/텍스트. ID 등 near-unique(고유값 비율↑) 컬럼은 제외.
+  const entityCands = cols.filter(
+    (c) => (c.kind === "categorical" || c.kind === "text") && c.cardinality >= 4 && c.cardinality / c.filled <= 0.5,
+  );
+  const entity = pref(entityCands, ["상품", "제품", "product", "품목", "name", "이름"]) ?? entityCands.sort((a, b) => b.cardinality - a.cardinality)[0];
 
   return {
     title,
