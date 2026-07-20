@@ -5,7 +5,9 @@ import { exec } from "node:child_process";
 import { glob } from "glob";
 import XLSX from "xlsx";
 import { CHARTJS_SOURCE } from "../assets/chartjs.js";
-import { buildDashboard, readWorkbook, TABULAR_EXT } from "../dashboard/engine.js";
+import { buildDashboard, readWorkbook, readRows, profileColumns, TABULAR_EXT } from "../dashboard/engine.js";
+import { TEMPLATE1_CSS } from "../dashboard/tokens.js";
+import { DESIGN_SYSTEM_GUIDE, DS_SAFETY_CSS } from "../dashboard/catalog.js";
 import type { PermissionCategory } from "./permissions.js";
 
 // Chart.js 로드 직후 적용할 전역 기본값: 항목이 적어도 막대가 카드 폭에 꽉 늘어나지 않게 두께 상한.
@@ -101,6 +103,21 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     type: "function",
     function: {
+      name: "dashboard_design_system",
+      description:
+        "Return the company dashboard design-system component catalog (template1): ready-to-use HTML snippets for every component (cards, KPI, charts, table, ranking, gauge, stackbar, tip, notification, feed, product card, report), the color palette, layout rules, and the {{BCAVE_DS}}/{{BCAVE_DATA}}/{{BCAVE_CHARTJS}} placeholders. If a data file path is given, also returns that file's columns and types. Call this FIRST whenever you build or edit a dashboard by hand, then compose the HTML yourself using ONLY these components — tailored to the user's request (e.g. charts only, table only) and varied each time.",
+      parameters: {
+        type: "object",
+        properties: {
+          path: { type: "string", description: "Optional data file path — returns its columns/types to guide aggregation." },
+        },
+        required: [],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "create_dashboard",
       description:
         "Generate a single-file HTML dashboard from a tabular data file (Excel/CSV/TSV/TXT/HTML table) using the company design system (template1). It auto-analyzes the columns and builds KPIs, charts, a ranking, and a searchable table — no manual HTML needed. ALWAYS use this when the user asks to make a dashboard from a data file. For a non-tabular source (e.g. a PDF report), first read it with read_file, extract the data into a CSV with write_file, then call this on that CSV.",
@@ -122,6 +139,7 @@ const CATEGORY_MAP: Record<string, PermissionCategory> = {
   search_files: "file_read",
   write_file: "file_write",
   create_dashboard: "file_write",
+  dashboard_design_system: "file_read",
   shell_exec: "shell_exec",
 };
 
@@ -242,6 +260,10 @@ function resolvePlaceholders(content: string, cwd: string): string {
     const [rawPath, sheet] = String(spec).split("#");
     return spreadsheetToJSON(path.resolve(cwd, rawPath.trim()), sheet?.trim());
   });
+  // 디자인시스템(template1) CSS + 안전 보정 → 인라인 (LLM 이 카탈로그로 조립할 때 사용, 토큰 0)
+  if (content.includes("{{BCAVE_DS}}")) {
+    content = content.split("{{BCAVE_DS}}").join(TEMPLATE1_CSS + "\n" + DS_SAFETY_CSS);
+  }
   // Chart.js 자리표시자·CDN <script> → 인라인 소스(+기본값). 완전한 단일 파일·오프라인 가능.
   if (content.includes("{{BCAVE_CHARTJS}}")) {
     content = content.split("{{BCAVE_CHARTJS}}").join(CHARTJS_SOURCE + CHARTJS_DEFAULTS);
@@ -373,6 +395,33 @@ export async function executeTool(
           );
         }
         return `File written: ${args.path} (검토 통과)`;
+      }
+      case "dashboard_design_system": {
+        let dataNote = "";
+        const p = args.path as string | undefined;
+        if (p) {
+          const filePath = path.resolve(cwd, p);
+          if (fs.existsSync(filePath) && TABULAR_EXT.has(path.extname(filePath).toLowerCase())) {
+            try {
+              const { rows, sheet } = readRows(filePath);
+              const sample = rows.slice(0, 80);
+              const lines = profileColumns(rows).map((c) => {
+                let ex = "";
+                if (c.kind === "categorical" || c.kind === "binary") {
+                  ex = " · 예: " + [...new Set(sample.map((r) => r[c.name]).filter((v) => v != null && v !== "").map(String))].slice(0, 6).join(", ");
+                }
+                return `- ${c.name} [${c.kind}] 고유값 ${c.cardinality}${ex}`;
+              });
+              dataNote =
+                `\n\n## 이 데이터 (${rows.length.toLocaleString("ko-KR")}행 · 시트 "${sheet}")\n` +
+                `데이터 주입 자리표시자: {{BCAVE_DATA:${filePath}#${sheet}}}\n` +
+                lines.join("\n");
+            } catch { /* 프로파일 실패는 무시하고 가이드만 반환 */ }
+          } else {
+            dataNote = `\n\n(참고: '${p}' 는 표 형식이 아니거나 없음. 비정형 소스면 read_file 로 읽어 데이터를 CSV 로 저장한 뒤 그 경로로 다시 호출.)`;
+          }
+        }
+        return DESIGN_SYSTEM_GUIDE + dataNote;
       }
       case "create_dashboard": {
         const filePath = path.resolve(cwd, args.path as string);
