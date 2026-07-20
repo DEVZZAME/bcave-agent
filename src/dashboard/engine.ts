@@ -5,6 +5,7 @@
 import fs from "node:fs";
 import XLSX from "xlsx";
 import { TEMPLATE1_CSS } from "./tokens.js";
+import { TEMPLATE2_CSS } from "./tokens2.js";
 
 // ── 템플릿 레지스트리 ────────────────────────────
 export interface Template {
@@ -17,10 +18,17 @@ export interface Template {
 export const TEMPLATES: Record<string, Template> = {
   template1: {
     id: "template1",
-    label: "template1 — 패션브랜드 디자인시스템 (토스 스타일)",
+    label: "1. 모던 (토스풍 · 밝은 배경 · 둥근 카드 · 파란 강조)",
     css: TEMPLATE1_CSS,
     palette: ["#3182F6", "#64A8FF", "#90C2FF", "#C9E2FF", "#FFB331", "#FFD98E", "#B0B8C1"],
     accent: "#3182F6",
+  },
+  template2: {
+    id: "template2",
+    label: "2. 클래식 (문서/보고서형 · 흰 종이 · 괘선 · 먹색+옐로)",
+    css: TEMPLATE2_CSS,
+    palette: ["#2B3138", "#F5C400", "#9AA1A9", "#DADDE1", "#C4302B", "#1D5FBF"],
+    accent: "#F5C400",
   },
 };
 
@@ -318,7 +326,12 @@ function chartCard(id: string, titleId: string, sm: boolean): string {
 }
 
 export function renderDashboard(spec: DashboardSpec, dataFile: string, sheet: string, templateId: string): string {
-  const t = TEMPLATES[templateId] ?? TEMPLATES.template1;
+  return templateId === "template2" ? renderT2(spec, dataFile, sheet) : renderT1(spec, dataFile, sheet);
+}
+
+// template1 — 모던(토스풍, ds-*)
+function renderT1(spec: DashboardSpec, dataFile: string, sheet: string): string {
+  const t = TEMPLATES.template1;
   const hasDate = !!spec.dateCol;
   const hasMetric = !!spec.metricCol;
 
@@ -410,6 +423,118 @@ export function renderDashboard(spec: DashboardSpec, dataFile: string, sheet: st
     `</div>` +
     `<script>window.__SPEC=${specJson};window.__DATA={{BCAVE_DATA:${dataFile}#${sheet}}};</script>` +
     RENDER_SCRIPT +
+    `</body></html>`
+  );
+}
+
+// ── template2 — 클래식(문서/보고서형, rp-*) ──
+const EXTRA_CSS_2 = `
+*{box-sizing:border-box}
+.rp-grid-2{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+.rp-grid-53{grid-template-columns:minmax(0,1fr) minmax(0,1.15fr)}
+.rp-grid-2>*,.rp-grid-53>*{min-width:0}
+@media(max-width:820px){.rp-grid-2,.rp-grid-53{grid-template-columns:minmax(0,1fr)}}
+canvas{max-width:100%}
+.rp-pgbtn{border:1px solid var(--rp-line);background:#fff;font:inherit;font-size:12px;padding:5px 11px;cursor:pointer}
+.rp-pgbtn:disabled{opacity:.4;cursor:default}
+`;
+
+const RENDER_SCRIPT_2 = String.raw`<script>(function(){
+var esc=window.esc||function(v){return String(v==null?'':v);};
+var S=window.__SPEC||{},D=window.__DATA||[],PAL=S.palette||['#2B3138','#F5C400','#9AA1A9','#DADDE1'];
+var N=D.length;
+function num(v){var n=Number(String(v==null?'':v).replace(/[, %]/g,''));return isNaN(n)?0:n;}
+function fmt(n){return Number(Math.round(n)).toLocaleString('ko-KR');}
+function money(n){var a=Math.abs(n);if(a>=1e8)return (n/1e8).toFixed(1)+'억';if(a>=1e4)return fmt(n/1e4)+'만';return fmt(n);}
+function set(id,v){var e=document.getElementById(id);if(e)e.textContent=v;}
+function html(id,v){var e=document.getElementById(id);if(e)e.innerHTML=v;}
+var MC=S.metricCol,DC=S.dateCol;
+function groupSum(col,f){var m={};D.forEach(function(r){var k=r[col];k=(k==null||k==='')?'미상':String(k);m[k]=(m[k]||0)+(f?f(r):1);});return m;}
+function top(o,n){return Object.keys(o).map(function(k){return [k,o[k]];}).sort(function(a,b){return b[1]-a[1];}).slice(0,n);}
+function months(f){var m={};D.forEach(function(r){var d=String(r[DC]||'').slice(0,7).replace(/[/.]/g,'-');if(/^\d{4}-\d{2}$/.test(d))m[d]=(m[d]||0)+(f?f(r):1);});var ks=Object.keys(m).sort();return {ks:ks,vs:ks.map(function(k){return m[k];})};}
+var tot=MC?D.reduce(function(a,r){return a+num(r[MC]);},0):0;
+var kpis=[['주문 건수',fmt(N)],['총 '+S.metricLabel,MC?money(tot):'—'],['평균 '+S.metricLabel,MC?money(tot/Math.max(N,1)):'—'],[S.binaryCol?(S.binaryCol+' 비율'):'컬럼 수',S.binaryCol?(Math.round(D.filter(function(r){return String(r[S.binaryCol]).trim()===S.binaryPositive;}).length/Math.max(N,1)*1000)/10+'%'):String((S.tableCols||[]).length)]];
+kpis.forEach(function(k,i){set('t2kl'+i,k[0]);set('t2kv'+i,k[1]);});
+try{if(window.Chart){Chart.defaults.font.family='Pretendard Variable,Pretendard,system-ui,sans-serif';Chart.defaults.maintainAspectRatio=false;Chart.defaults.color='#8A9199';}}catch(e){}
+function mk(el,cfg){try{if(window.Chart&&el)return new Chart(el,cfg);}catch(e){}}
+if(DC){var mo=MC?months(function(r){return num(r[MC]);}):months(null);
+mk(document.getElementById('t2trend'),{type:'line',data:{labels:mo.ks,datasets:[{data:mo.vs,borderColor:PAL[0],backgroundColor:'rgba(43,49,56,.06)',fill:true,tension:.3,pointRadius:0,borderWidth:2}]},options:{plugins:{legend:{display:false}},scales:{x:{grid:{display:false}},y:{beginAtZero:true,grid:{color:'#E3E6EA'},ticks:{callback:function(v){return MC?money(v):fmt(v);}}}}}});}
+var c0=(S.catCols||[])[0];
+if(c0){var g=groupSum(c0,MC?function(r){return num(r[MC]);}:null);var tp=top(g,6);var sum=tp.reduce(function(a,b){return a+b[1];},0);var cnt=groupSum(c0,null);
+mk(document.getElementById('t2cat'),{type:'doughnut',data:{labels:tp.map(function(p){return p[0];}),datasets:[{data:tp.map(function(p){return p[1];}),backgroundColor:PAL,borderWidth:1,borderColor:'#fff'}]},options:{cutout:'56%',plugins:{legend:{position:'right',labels:{boxWidth:8,font:{size:11}}}}}});
+html('t2catHead','<tr><th>'+esc(c0)+'</th><th>건수</th><th>'+(MC?esc(S.metricLabel):'값')+'</th><th>비중</th></tr>');
+html('t2catBody',tp.map(function(p){return '<tr><td>'+esc(p[0])+'</td><td>'+fmt(cnt[p[0]]||0)+'</td><td>'+(MC?money(p[1]):fmt(p[1]))+'</td><td class="muted">'+(sum?Math.round(p[1]/sum*100):0)+'%</td></tr>';}).join('')+'<tr class="total"><td>합계</td><td>'+fmt(N)+'</td><td>'+(MC?money(tot):fmt(N))+'</td><td>100%</td></tr>');}
+var EC=S.entityCol;
+if(EC){var ge=groupSum(EC,MC?function(r){return num(r[MC]);}:null);var te=top(ge,8);var ce=groupSum(EC,null);
+html('t2entHead','<tr><th>순위</th><th>'+esc(EC)+'</th><th>건수</th><th>'+(MC?esc(S.metricLabel):'값')+'</th></tr>');
+html('t2entBody',te.map(function(p,i){return '<tr'+(i===0?' class=\"hl\"':'')+'><td>'+(i+1)+'</td><td>'+esc(p[0])+'</td><td>'+fmt(ce[p[0]]||0)+'</td><td>'+(MC?money(p[1]):fmt(p[1]))+'</td></tr>';}).join(''));}
+var cols=S.tableCols||Object.keys(D[0]||{});
+html('t2thead','<tr>'+cols.map(function(c){return '<th>'+esc(c)+'</th>';}).join('')+'</tr>');
+var P=1,SZ=14,F=D,tb=document.getElementById('t2tb'),q=document.getElementById('t2q'),cn=document.getElementById('t2cnt'),pv=document.getElementById('t2pv'),nx=document.getElementById('t2nx'),pi=document.getElementById('t2pi');
+function draw(){if(!tb)return;var pg=Math.max(1,Math.ceil(F.length/SZ));if(P>pg)P=pg;var sl=F.slice((P-1)*SZ,(P-1)*SZ+SZ);
+tb.innerHTML=sl.length?sl.map(function(r){return '<tr>'+cols.map(function(c){return '<td>'+esc(r[c])+'</td>';}).join('')+'</tr>';}).join(''):'<tr><td colspan="'+cols.length+'" style="text-align:center;padding:20px;color:var(--rp-ink-3)">검색 결과가 없습니다.</td></tr>';
+if(cn)cn.textContent='총 '+fmt(F.length)+'건';if(pi)pi.textContent=P+' / '+pg;if(pv)pv.disabled=P<=1;if(nx)nx.disabled=P>=pg;}
+if(q)q.addEventListener('input',function(){var s=q.value.trim().toLowerCase();F=!s?D:D.filter(function(r){return cols.some(function(c){return String(r[c]).toLowerCase().indexOf(s)>=0;});});P=1;draw();});
+if(pv)pv.onclick=function(){if(P>1){P--;draw();}};if(nx)nx.onclick=function(){P++;draw();};draw();
+})();</script>`;
+
+function renderT2(spec: DashboardSpec, dataFile: string, sheet: string): string {
+  const t = TEMPLATES.template2;
+  const hasDate = !!spec.dateCol;
+  const cat0 = spec.catCols[0];
+  const entity = spec.entityCol;
+  const fig = (title: string, id: string, h = 280) =>
+    `<div class="rp-fig"><div class="rp-fig-head"><span class="rp-fig-title">${title}</span></div><div class="rp-fig-body"><div style="position:relative;height:${h}px"><canvas id="${id}"></canvas></div></div></div>`;
+
+  const secs: string[] = [];
+  secs.push(
+    `<div class="rp-kpi-strip">` +
+      [0, 1, 2, 3].map((i) => `<div><div class="rp-kpi-l" id="t2kl${i}">–</div><div class="rp-kpi-v" id="t2kv${i}">–</div></div>`).join("") +
+      `</div>`,
+  );
+  let titles = [["핵심 지표", "KEY METRICS"]];
+  if (hasDate) {
+    secs.push(fig(`${spec.metricLabel} 월별 추이`, "t2trend", 260));
+    titles.push([`${spec.metricLabel} 추이`, "TREND"]);
+  }
+  if (cat0) {
+    secs.push(
+      `<div class="rp-grid-53">${fig(`${cat0}별 비중`, "t2cat", 240)}<div><table class="rp-tbl"><thead id="t2catHead"></thead><tbody id="t2catBody"></tbody></table></div></div>`,
+    );
+    titles.push([`${cat0} 분석`, "BREAKDOWN"]);
+  }
+  if (entity) {
+    secs.push(`<table class="rp-tbl"><thead id="t2entHead"></thead><tbody id="t2entBody"></tbody></table>`);
+    titles.push([`${entity} 상위`, "TOP"]);
+  }
+  secs.push(
+    `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><span class="rp-tbl-note" id="t2cnt"></span><input id="t2q" type="search" placeholder="검색" style="border:1px solid var(--rp-line);padding:6px 10px;font:inherit;font-size:12px"></div>` +
+      `<div style="overflow-x:auto"><table class="rp-tbl"><thead id="t2thead"></thead><tbody id="t2tb"></tbody></table></div>` +
+      `<div style="display:flex;gap:6px;justify-content:flex-end;align-items:center;margin-top:10px"><span id="t2pi" style="margin-right:auto;font-size:11px;color:var(--rp-ink-3)"></span><button id="t2pv" class="rp-pgbtn">이전</button><button id="t2nx" class="rp-pgbtn">다음</button></div>`,
+  );
+  titles.push(["데이터", "DATA"]);
+
+  const sections = secs
+    .map(
+      (inner, i) =>
+        `<div class="rp-section"><div class="rp-sec-head"><span class="rp-sec-no">${i + 1}</span><span class="rp-sec-title">${titles[i][0]}</span><span class="rp-sec-en">${titles[i][1]}</span></div>${inner}</div>`,
+    )
+    .join("");
+
+  const specJson = JSON.stringify({ ...spec, palette: t.palette });
+  return (
+    `<!doctype html><html lang="ko"><head><meta charset="utf-8">` +
+    `<meta name="viewport" content="width=device-width,initial-scale=1"><title>${spec.title}</title>` +
+    `<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">` +
+    `<script>{{BCAVE_CHARTJS}}</script>` +
+    `<style>${t.css}\n${EXTRA_CSS_2}\n:where(body){word-break:keep-all;overflow-wrap:break-word}</style></head>` +
+    `<body class="rp-body"><div class="rp-page"><div class="rp-inner">` +
+    `<div class="rp-titleblock"><span class="rp-doc-type">실적 보고서</span><div class="rp-title">${spec.title}</div><div class="rp-subtitle">${spec.subtitle}</div></div>` +
+    sections +
+    `<div class="rp-footer"><span>BCAVE · 자동 생성 보고서</span><span>${spec.subtitle}</span></div>` +
+    `</div></div>` +
+    `<script>window.__SPEC=${specJson};window.__DATA={{BCAVE_DATA:${dataFile}#${sheet}}};</script>` +
+    RENDER_SCRIPT_2 +
     `</body></html>`
   );
 }

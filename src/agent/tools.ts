@@ -120,11 +120,12 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     function: {
       name: "create_dashboard",
       description:
-        "Generate a single-file HTML dashboard from a tabular data file (Excel/CSV/TSV/TXT/HTML table) using the company design system (template1). It auto-analyzes the columns and builds KPIs, charts, a ranking, and a searchable table — no manual HTML needed. ALWAYS use this when the user asks to make a dashboard from a data file. For a non-tabular source (e.g. a PDF report), first read it with read_file, extract the data into a CSV with write_file, then call this on that CSV.",
+        "Generate a single-file HTML dashboard (standard full template) from a tabular data file (Excel/CSV/TSV/TXT/HTML table) using the company design system. Auto-analyzes columns and builds KPIs, charts, a ranking, and a searchable table — no manual HTML. Pick the design with `template`: 'template1' (모던) or 'template2' (클래식/report). Use this for a quick standard dashboard; for a custom layout compose by hand via dashboard_design_system instead. For a non-tabular source (PDF), read_file → extract to CSV → then call this.",
       parameters: {
         type: "object",
         properties: {
           path: { type: "string", description: "Path to the data file (xlsx/xls/ods/csv/tsv/txt/html)" },
+          template: { type: "string", description: "'template1'/'모던' (default) or 'template2'/'클래식'." },
           output: { type: "string", description: "Optional output .html path. Default: <datafile>-dashboard.html next to the source." },
         },
         required: ["path"],
@@ -435,9 +436,10 @@ export async function executeTool(
         if (!TABULAR_EXT.has(ext)) {
           return `create_dashboard 는 표 형식(엑셀/CSV/TSV/TXT/HTML)만 지원합니다. '${ext}' 는 read_file 로 데이터를 읽어 CSV 로 저장한 뒤 그 CSV 로 다시 시도하세요.`;
         }
+        const tid = normalizeTemplate(args.template as string | undefined);
         let html: string, rowCount: number, sheet: string;
         try {
-          ({ html, rowCount, sheet } = buildDashboard(filePath, "template1"));
+          ({ html, rowCount, sheet } = buildDashboard(filePath, tid));
         } catch (e) {
           return `대시보드 생성 실패: ${(e as Error).message}`;
         }
@@ -452,7 +454,7 @@ export async function executeTool(
         const issues = reviewHtml(resolved, outPath);
         const kb = Math.round(fs.statSync(outPath).size / 1024);
         return (
-          `대시보드 생성 완료: ${outPath} (${kb}KB · ${rowCount.toLocaleString("ko-KR")}행 · 시트 "${sheet}" · template1 디자인시스템)` +
+          `대시보드 생성 완료: ${outPath} (${kb}KB · ${rowCount.toLocaleString("ko-KR")}행 · 시트 "${sheet}" · ${tid === "template2" ? "클래식" : "모던"} 디자인시스템)` +
           (issues.length ? `\n⚠ 검토 경고: ${issues.join("; ")}` : " · 검토 통과")
         );
       }
