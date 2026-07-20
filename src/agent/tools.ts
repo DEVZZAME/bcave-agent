@@ -6,8 +6,7 @@ import { glob } from "glob";
 import XLSX from "xlsx";
 import { CHARTJS_SOURCE } from "../assets/chartjs.js";
 import { buildDashboard, readWorkbook, readRows, profileColumns, TABULAR_EXT } from "../dashboard/engine.js";
-import { TEMPLATE1_CSS } from "../dashboard/tokens.js";
-import { DESIGN_SYSTEM_GUIDE, DS_SAFETY_CSS } from "../dashboard/catalog.js";
+import { TEMPLATE1_FULL_CSS, TEMPLATE2_FULL_CSS, DASH_TEMPLATES, normalizeTemplate } from "../dashboard/catalog.js";
 import type { PermissionCategory } from "./permissions.js";
 
 // Chart.js 로드 직후 적용할 전역 기본값: 항목이 적어도 막대가 카드 폭에 꽉 늘어나지 않게 두께 상한.
@@ -105,10 +104,11 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     function: {
       name: "dashboard_design_system",
       description:
-        "Return the company dashboard design-system component catalog (template1): ready-to-use HTML snippets for every component (cards, KPI, charts, table, ranking, gauge, stackbar, tip, notification, feed, product card, report), the color palette, layout rules, and the {{BCAVE_DS}}/{{BCAVE_DATA}}/{{BCAVE_CHARTJS}} placeholders. If a data file path is given, also returns that file's columns and types. Call this FIRST whenever you build or edit a dashboard by hand, then compose the HTML yourself using ONLY these components — tailored to the user's request (e.g. charts only, table only) and varied each time.",
+        "Return the company dashboard design-system component catalog: ready-to-use HTML snippets for every component, the palette, layout rules, and the CSS/data/Chart.js placeholders. There are TWO templates — pick with the `template` arg: 'template1' (모던/modern — Toss-style, ds-* classes) or 'template2' (클래식/classic — document report, rp-* classes). If a data file path is given, also returns that file's columns and types. Call this FIRST whenever you build or edit a dashboard by hand, then compose the HTML yourself using ONLY that template's components — tailored to the request (e.g. charts only, table only) and varied each time.",
       parameters: {
         type: "object",
         properties: {
+          template: { type: "string", description: "'template1'/'모던'/'modern' (default) or 'template2'/'클래식'/'classic'." },
           path: { type: "string", description: "Optional data file path — returns its columns/types to guide aggregation." },
         },
         required: [],
@@ -260,9 +260,13 @@ function resolvePlaceholders(content: string, cwd: string): string {
     const [rawPath, sheet] = String(spec).split("#");
     return spreadsheetToJSON(path.resolve(cwd, rawPath.trim()), sheet?.trim());
   });
-  // 디자인시스템(template1) CSS + 안전 보정 → 인라인 (LLM 이 카탈로그로 조립할 때 사용, 토큰 0)
+  // 디자인시스템 CSS → 인라인 (LLM 이 카탈로그로 조립할 때 사용, 토큰 0)
+  // {{BCAVE_DS2}} 를 먼저 치환(부분일치 방지)
+  if (content.includes("{{BCAVE_DS2}}")) {
+    content = content.split("{{BCAVE_DS2}}").join(TEMPLATE2_FULL_CSS);
+  }
   if (content.includes("{{BCAVE_DS}}")) {
-    content = content.split("{{BCAVE_DS}}").join(TEMPLATE1_CSS + "\n" + DS_SAFETY_CSS);
+    content = content.split("{{BCAVE_DS}}").join(TEMPLATE1_FULL_CSS);
   }
   // Chart.js 자리표시자·CDN <script> → 인라인 소스(+기본값). 완전한 단일 파일·오프라인 가능.
   if (content.includes("{{BCAVE_CHARTJS}}")) {
@@ -397,6 +401,7 @@ export async function executeTool(
         return `File written: ${args.path} (검토 통과)`;
       }
       case "dashboard_design_system": {
+        const tid = normalizeTemplate(args.template as string | undefined);
         let dataNote = "";
         const p = args.path as string | undefined;
         if (p) {
@@ -421,7 +426,7 @@ export async function executeTool(
             dataNote = `\n\n(참고: '${p}' 는 표 형식이 아니거나 없음. 비정형 소스면 read_file 로 읽어 데이터를 CSV 로 저장한 뒤 그 경로로 다시 호출.)`;
           }
         }
-        return DESIGN_SYSTEM_GUIDE + dataNote;
+        return `[선택된 템플릿: ${DASH_TEMPLATES[tid].label}]\n\n` + DASH_TEMPLATES[tid].guide + dataNote;
       }
       case "create_dashboard": {
         const filePath = path.resolve(cwd, args.path as string);
