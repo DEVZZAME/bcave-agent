@@ -935,8 +935,10 @@ async function main(): Promise<void> {
     " ╚██████╗╚██████╔╝██████╔╝███████╗",
     "  ╚═════╝ ╚═════╝ ╚═════╝ ╚══════╝",
   ];
-  for (const l of bcaveArt) console.log(chalk.cyan.bold(l));
-  for (const l of codeArt) console.log(chalk.blue.bold(l));
+  // BCAVE 와 CODE 를 한 줄에 나란히 (개행 없이)
+  for (let i = 0; i < bcaveArt.length; i++) {
+    console.log(chalk.cyan.bold(bcaveArt[i]) + chalk.blue.bold(codeArt[i]));
+  }
   console.log("");
   const who = isLoggedIn(config) ? `  ·  ${config.userName || config.userEmail}` : "";
   console.log("  " + chalk.dim(`v0.1.0  ·  ${config.model}  ·  ${process.cwd()}${who}`));
