@@ -11,7 +11,7 @@ step() { printf "  ${C}▸${R} %s\n" "$1"; }
 ok()   { printf "  ${G}✓${R} %s\n" "$1"; }
 
 printf "\n"
-printf "  ${B}${C}B.CAVE${R} ${B}AGENT${R}\n"
+printf "  ${B}${C}B.CAVE${R} ${B}CODE${R}\n"
 printf "  ${C}────────────────────────────${R}\n"
 printf "  ${D}사내 AI 코딩 에이전트 · 사내 계정 로그인${R}\n"
 printf "\n"
