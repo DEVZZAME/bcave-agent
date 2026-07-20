@@ -697,7 +697,7 @@ async function dashboardCommand(): Promise<void> {
     }
     console.log(
       chalk.dim(
-        `  분석: ${rowCount.toLocaleString("ko-KR")}행 · 시트 "${sheet}" · KPI ${spec.kpis.length}개 · 차트 ${spec.charts.length}개${spec.ranking ? " · 랭킹 1개" : ""}`,
+        `  분석: ${rowCount.toLocaleString("ko-KR")}행 · 시트 "${sheet}" · 지표 ${spec.metricLabel}${spec.dateCol ? " · 추이 " + spec.dateCol : ""} · 범주 ${spec.catCols.length}개${spec.entityCol ? " · " + spec.entityCol : ""}`,
       ),
     );
     const title = nodePath.basename(file, nodePath.extname(file));
