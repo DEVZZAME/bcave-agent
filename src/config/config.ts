@@ -29,9 +29,11 @@ const DEFAULT_CONFIG: BcaveConfig = {
   refreshToken: "",
   userEmail: "",
   userName: "",
-  model: "gpt-5.5",
-  autoRoute: true,
-  modelHeavy: "gpt-5.4",
+  // 비용 절감: 기본은 전부 gpt-5.4-mini, 자동 라우팅 off.
+  // (필요 시 /model heavy gpt-5.4 + /model auto 로 무거운 작업만 상위 모델 사용 가능)
+  model: "gpt-5.4-mini",
+  autoRoute: false,
+  modelHeavy: "gpt-5.4-mini",
   modelLight: "gpt-5.4-mini",
   apiKey: "",
   baseUrl: "https://api.openai.com/v1",
