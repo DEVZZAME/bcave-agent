@@ -25,7 +25,7 @@ export const DIRECTIONS: Direction[] = [
     fonts: `Helvetica Neue 계열 — <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;900&display=swap" rel="stylesheet"> (Inter, 700~900 활용)`,
     palette: "배경 #F4F4F2 · 텍스트 #0A0A0A · 강조 단 하나 #FF3B00(레드) 또는 #0A0A0A. 회색조만.",
     shape: "라운드 0. 보더 1px #0A0A0A 또는 없음. 그림자 없음. 완전 플랫.",
-    type: "디스플레이 초대형(clamp(48px,8vw,120px)) 900, 자간 -0.04em. 본문 15px 400. 좌측정렬 강한 위계.",
+    type: "디스플레이 초대형(clamp(48px,8vw,120px)) 600, 자간 -0.04em. 본문 15px 400. 좌측정렬 강한 위계(두께가 아니라 크기·여백으로).",
     motion: "거의 없음. hover 시 밑줄/색 반전만.",
     signature: "거대한 섹션 번호(01/02), 기준선 그리드, 규칙(rule) 라인, 비대칭 컬럼.",
     avoid: "그라디언트·그림자·둥근 모서리·중앙정렬 카드.",
@@ -38,7 +38,7 @@ export const DIRECTIONS: Direction[] = [
     fonts: `세리프+산세리프 혼합 — <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,900&family=Inter:wght@400;500&display=swap" rel="stylesheet">`,
     palette: "따뜻한 종이 #FBF9F4 · 텍스트 #1A1712 · 강조 #B4472B(테라코타) 또는 #2E5E4E(딥그린). 헤어라인 #E4DDCF.",
     shape: "라운드 최소(2~4px). 얇은 hairline 구분선. 그림자 없음.",
-    type: "제목 Fraunces 900 clamp(40px,6vw,84px). 본문 세리프/산세리프 18px lh1.7. 드롭캡·풀쿼트.",
+    type: "제목 Fraunces 600 clamp(40px,6vw,84px). 본문 세리프/산세리프 18px lh1.7. 드롭캡·풀쿼트.",
     motion: "부드러운 페이드/슬라이드(정도껏).",
     signature: "드롭캡, 큰 인용문(pull-quote), 비대칭 2~3단, 캡션 있는 이미지.",
     avoid: "SaaS 카드 그리드, 인디고 그라디언트, 꽉 찬 색면.",
@@ -90,7 +90,7 @@ export const DIRECTIONS: Direction[] = [
     fonts: `둥근 산세 — <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;800&display=swap" rel="stylesheet">`,
     palette: "배경 #FBF7FF · 표면 #FFFFFF · 텍스트 #3B3550 · 강조 #8B7CFF(라벤더)/#FF9EC4(핑크)/#7DD3C0(민트).",
     shape: "라운드 큼(20~32px). 보더 없음. 그림자 부드럽게(0 12px 40px rgba(색,.18)).",
-    type: "둥근 800 제목. 본문 16px lh1.7. 친근한 위계.",
+    type: "둥근 600 제목. 본문 16px lh1.7. 친근한 위계.",
     motion: "말랑한 스프링 hover(scale 1.03), 부드러운 페이드.",
     signature: "블롭(blob) 배경, 소프트 그림자 카드, 파스텔 그라디언트, 둥근 배지/칩.",
     avoid: "날카로운 모서리·검은 보더·고대비·모노.",
@@ -116,7 +116,7 @@ export const DIRECTIONS: Direction[] = [
     fonts: `<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@500;700;800&display=swap" rel="stylesheet">`,
     palette: "배경 #FFF8E7 또는 색면. 강조 다색 #FF5470/#22C55E/#3B82F6/#FDB833. 텍스트 #1B1B3A.",
     shape: "라운드 큼(16~28px). 보더 2px 또는 없음. 컬러 그림자.",
-    type: "800 두껍고 큼. 살짝 통통. 라벨 칩.",
+    type: "700 큼직. 살짝 통통. 라벨 칩. (플레이풀은 의도적으로 볼드 허용)",
     motion: "탄력 있는 hover(scale/tilt), 통통 튀는 전환.",
     signature: "색면 블록, 살짝 기울인 요소, 큰 이모지 대체 도형, 컬러풀 배지.",
     avoid: "다크·세리프·미묘한 회색조·플랫한 절제.",
@@ -129,7 +129,7 @@ export const DIRECTIONS: Direction[] = [
     fonts: `<link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700&display=swap" rel="stylesheet">`,
     palette: "배경 = 다채 그라디언트/오로라(#6D5BFF→#00C2FF→#FF7AD9). 패널 rgba(255,255,255,.12). 텍스트 #F5F7FF.",
     shape: "라운드 18~24px. 보더 1px rgba(255,255,255,.25). backdrop-filter: blur(20px). 은은한 그림자.",
-    type: "제목 700 clamp(36px,5vw,72px). 본문 밝은 회백.",
+    type: "제목 600 clamp(36px,5vw,72px). 본문 밝은 회백.",
     motion: "떠다니는 오브(orb) 애니, 부드러운 패럴랙스, 글로우 hover.",
     signature: "프로스티드 유리 카드, 배경 블러 오브, 그라디언트 텍스트/보더.",
     avoid: "플랫 화이트 배경·검은 보더·모노·종이 질감.",
@@ -247,7 +247,8 @@ export function directionForRequest(
     isUi = true;
   }
   if (!isUi) return { direction: null, isUi: false, needsClarify: false };
-  const hasDetail = DETAIL_HINT.test(message) || message.trim().length > 40;
-  const needsClarify = !style && !hasDetail && !VAGUE_OK.test(message) && !lastWasUi;
+  // 스타일/무드가 명시되지 않았으면 항상 되묻는다(내용만 있고 스타일이 없어도).
+  // 단 "알아서/그냥" 이거나 되묻기 후속 답변(lastWasUi)이면 그냥 진행.
+  const needsClarify = !style && !VAGUE_OK.test(message) && !lastWasUi;
   return { direction: style ?? rotateDirection(), isUi: true, needsClarify };
 }

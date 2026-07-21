@@ -313,6 +313,19 @@ function reviewHtml(content: string, filePath: string): string[] {
     if (nonFontCss.length) {
       issues.push("단일 파일 규칙: 외부 CSS(<link rel=\"stylesheet\">)를 쓰지 말고 CSS 를 전부 같은 파일의 인라인 <style> 안에 넣으세요(웹폰트 링크만 예외).");
     }
+    // 차트(canvas) 세로 무한 확장 방지
+    if (/<canvas/i.test(content)) {
+      // (a) canvas 에 height:auto → Chart.js 가 매 리사이즈마다 세로로 무한히 커진다(가장 흔한 원인)
+      if (/canvas[^{}]*\{[^}]*height\s*:\s*auto/i.test(styleCss)) {
+        issues.push("차트 오류: canvas 에 height:auto 를 주면 Chart.js 가 세로로 무한 확장됩니다. canvas 에는 height 를 지정하지 말고, 'position:relative; height:280px' 처럼 높이가 고정된 컨테이너 <div> 안에 넣은 뒤 차트 옵션에 maintainAspectRatio:false 를 쓰세요.");
+      }
+      // (b) Chart.js 를 쓰는데 고정 높이 컨테이너가 전혀 없음 → 높이가 불안정/무한 확장 위험
+      const usesChart = /new Chart|\{\{BCAVE_CHARTJS\}\}|chart\.umd|chart\.js/i.test(content);
+      const hasBoundedHeight = /height\s*:\s*\d+(?:px|vh|rem|em)/i.test(styleCss) || /aspect-ratio\s*:/i.test(styleCss) || /style=["'][^"']*height\s*:\s*\d+/i.test(content);
+      if (usesChart && !hasBoundedHeight) {
+        issues.push("차트 오류: 차트 컨테이너에 고정 높이가 없습니다. canvas 를 'position:relative; height:280px' 같은 고정 높이 <div> 에 넣고 maintainAspectRatio:false 로 하세요(안 그러면 그래프가 세로로 계속 길어집니다).");
+      }
+    }
 
     // 결과물에 들어가면 안 되는 "제작 과정·메타·다음 단계" 서술 (스크립트 제외한 표시 텍스트에서)
     const visible = content.replace(/<script[\s\S]*?<\/script>/gi, " ").replace(/<style[\s\S]*?<\/style>/gi, " ");
