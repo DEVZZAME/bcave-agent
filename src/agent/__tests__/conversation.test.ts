@@ -87,4 +87,25 @@ describe("ConversationManager", () => {
     expect(first.value).toMatchObject({ type: "model" });
     await troubleshoot.return(undefined);
   });
+
+  it("replaces a previous BCAVE context when the user switches the service to AXIS", async () => {
+    const cm = new ConversationManager(config, new PermissionManager("yolo"), process.cwd());
+    const bcaveRun = cm.run("관리자 웹 서비스를 만들어줘");
+    await bcaveRun.next();
+    await bcaveRun.return(undefined);
+
+    const axisRun = cm.run("AXIS 디자인시스템으로 서비스를 구현해줘");
+    await axisRun.next();
+
+    const designContexts = cm.getHistory().filter((message) =>
+      message.role === "system" && typeof message.content === "string" &&
+      message.content.includes("[ACTIVE_DESIGN_SYSTEM:"),
+    ).map((message) => String(message.content));
+    expect(designContexts).toHaveLength(1);
+    expect(designContexts[0]).toContain("[ACTIVE_DESIGN_SYSTEM:axis]");
+    expect(designContexts[0]).toContain("모든 웹 UI는 AXIS 디자인 시스템을 반드시 사용");
+    expect(designContexts[0]).not.toContain("모든 웹 UI는 BCAVE 디자인 시스템을 반드시 사용");
+    expect(designContexts[0]).toContain("이전 시스템 참조를 제거");
+    await axisRun.return(undefined);
+  });
 });

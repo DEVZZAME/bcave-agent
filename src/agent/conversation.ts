@@ -194,6 +194,30 @@ COMPOSITION DISCIPLINE:
   /** 저장된 히스토리로 대화를 복원. 현재(최신) 시스템 프롬프트는 유지한다. */
   loadHistory(history: ChatCompletionMessageParam[]): void {
     this.messages = [this.messages[0], ...history];
+    // 저장된 대화에서 마지막 활성 디자인 시스템을 복원한다.
+    for (let i = history.length - 1; i >= 0; i--) {
+      const message = history[i];
+      if (message.role !== "system" || typeof message.content !== "string") continue;
+      const active = message.content.match(/\[ACTIVE_DESIGN_SYSTEM:([a-z0-9_-]+)\]/i)?.[1]?.toLowerCase();
+      if (active && hasDesignSystem(active)) {
+        this.selectedDesignSystem = active;
+        break;
+      }
+    }
+  }
+
+  /** 이전 BCAVE/AXIS 지침을 제거하고 현재 작업에 맞는 디자인 컨텍스트 하나만 유지한다. */
+  private setDesignSystemContext(name: string, content: string): void {
+    this.messages = this.messages.filter((message, index) => {
+      if (index === 0 || message.role !== "system" || typeof message.content !== "string") return true;
+      return !(/\[ACTIVE_DESIGN_SYSTEM:/i.test(message.content) ||
+        /\[이번 UI 산출물은 (?:BCAVE|AXIS) 디자인 시스템/i.test(message.content) ||
+        /\[이 서비스의 모든 웹 UI는 (?:BCAVE|AXIS) 디자인 시스템/i.test(message.content));
+    });
+    this.messages.push({
+      role: "system",
+      content: `[ACTIVE_DESIGN_SYSTEM:${name}]\n${content}`,
+    });
   }
 
   approveToolCall(id: string): void {
@@ -308,9 +332,7 @@ COMPOSITION DISCIPLINE:
     if (appBuild && hasDesignSystem(this.selectedDesignSystem)) {
       const selected = this.selectedDesignSystem;
       const assets = designSystemDir(selected);
-      this.messages.push({
-        role: "system",
-        content:
+      this.setDesignSystemContext(selected,
           `[이 서비스의 모든 웹 UI는 ${selected.toUpperCase()} 디자인 시스템을 반드시 사용한다. 대시보드에만 적용되는 선택 규칙이 아니다.]\n` +
           designRules(selected) +
           `\n\n[애플리케이션 적용 계약 — 위 RULES의 정적 HTML 출력 계약보다 이 항목이 우선한다.]\n` +
@@ -319,21 +341,20 @@ COMPOSITION DISCIPLINE:
           `- 원본 자산은 ${assets}/${selected}-tokens.css 와 ${assets}/${selected}-ui.css 이다. UI를 쓰기 전에 두 파일을 읽고, 프로젝트 내부의 공용 스타일 위치로 그대로 복사해 전역에서 한 번 import한다. 이미 복사되어 있으면 중복 생성하지 말고 기존 파일을 재사용한다.\n` +
           `- JSX에서는 제공 마크업의 class를 className으로 변환해 사용한다. 제공된 토큰·클래스·컴포넌트 패턴을 우선하며 별도 색상 팔레트, 임의 hex/rgb, gradient, 임의 그림자·radius, Tailwind arbitrary value로 자체 디자인 시스템을 만들지 않는다.\n` +
           `- 필요한 클래스가 없으면 먼저 원본 ui.css의 기존 조합으로 해결한다. 정말 필요한 앱 전용 레이아웃 CSS만 별도 파일에 최소 추가하고, 색상·타이포·간격·radius 값은 반드시 ${selected}-tokens.css 변수만 참조한다.\n` +
-          `- 기존 화면을 수정할 때도 해당 화면만 독자적인 스타일로 남기지 말고 공통 ${selected.toUpperCase()} 셸, 내비게이션, 버튼, 폼, 테이블 패턴에 맞춘다. 완료 전 변경된 모든 UI 파일이 이 계약을 따르는지 점검한다.`,
-      });
+          `- 기존 화면을 수정할 때도 해당 화면만 독자적인 스타일로 남기지 말고 공통 ${selected.toUpperCase()} 셸, 내비게이션, 버튼, 폼, 테이블 패턴에 맞춘다. 완료 전 변경된 모든 UI 파일이 이 계약을 따르는지 점검한다.\n` +
+          `- 다른 디자인 시스템과 혼용하지 않는다. 프로젝트에서 ${selected.toUpperCase()}가 아닌 디자인 시스템의 CSS import, 자산, 전역 클래스가 발견되면 현재 ${selected.toUpperCase()} 자산으로 교체하고 이전 시스템 참조를 제거한다.`,
+      );
     }
     if (uiRequest && hasDesignSystem(this.selectedDesignSystem)) {
       const selected = this.selectedDesignSystem;
-      this.messages.push({
-        role: "system",
-        content:
+      this.setDesignSystemContext(selected,
           `[이번 UI 산출물은 ${selected.toUpperCase()} 디자인 시스템 강제 파이프라인을 사용한다.]\n` +
           designRules(selected) +
           `\n\nwrite_file을 정확히 한 번 호출하고 design_system: "${selected}", path, body, app_script 필드를 사용한다. ` +
           "body에는 <body> 내부 마크업만, app_script에는 데이터 자리표시자 할당과 JS만 넣는다. content·코드펜스·완성 HTML·<style>·<script>를 넣지 말고 template.html도 직접 읽지 않는다. " +
           "write_file 호출 직전에 body의 모든 class 이름을 RULES/UI 제공 클래스와 대조하고, row·container·wrapper처럼 익숙하지만 제공되지 않은 클래스를 발명하지 않는다. BCAVE의 가로 정렬은 row가 아니라 row-flex를 사용한다. " +
           "동일 축에는 동일 단위만 사용하고 고객 수 단위는 '명'이다. 완료 전 write_file 결과가 반드시 검토 통과여야 하며 실패/경고를 성공으로 간주하지 않는다. 완료 응답은 파일명과 검증 통과만 간결히 쓴다.",
-      });
+      );
     }
     if (appBuild) {
       this.messages.push({
