@@ -50,6 +50,16 @@ For embedding spreadsheet data token-free you may still use the {{BCAVE_DATA:/ab
     });
   }
 
+  /** 저장용 대화 히스토리(시스템 프롬프트 제외 — 복원 시 현재 시스템 프롬프트를 새로 씌운다). */
+  getHistory(): ChatCompletionMessageParam[] {
+    return this.messages.slice(1);
+  }
+
+  /** 저장된 히스토리로 대화를 복원. 현재(최신) 시스템 프롬프트는 유지한다. */
+  loadHistory(history: ChatCompletionMessageParam[]): void {
+    this.messages = [this.messages[0], ...history];
+  }
+
   approveToolCall(id: string): void {
     const pending = this.pendingApprovals.get(id);
     if (pending) {

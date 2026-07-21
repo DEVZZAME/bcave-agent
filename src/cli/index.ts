@@ -8,6 +8,7 @@ import type { BcaveConfig } from "../config/config.js";
 import { hubLogin, hubLogout, hubListModels, hubUsage, type HubModel } from "../auth/hub.js";
 import { buildDashboard, TEMPLATES, TABULAR_EXT } from "../dashboard/engine.js";
 import { executeTool } from "../agent/tools.js";
+import { newSessionId, saveSession, listSessions, loadSession } from "../session/store.js";
 import fs from "node:fs";
 import { execSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -94,6 +95,7 @@ function cycleMode(): void {
 
 // ─── Slash Commands ────────────────────────────────────
 const COMMANDS = [
+  { name: "/resume", desc: "이전 세션 다시 열기" },
   { name: "/dashboard", desc: "데이터 파일로 대시보드 생성 (디자인시스템 템플릿)" },
   { name: "/model", desc: "모델 선택 (auto 용도별 라우팅 · heavy/light <id> · <id> 고정)" },
   { name: "/usage", desc: "사용량/한도 확인" },
@@ -381,6 +383,94 @@ let cm: ConversationManager | null = null;
 function rebuildCM(): void {
   const pm = new PermissionManager(mode);
   cm = new ConversationManager(config, pm, process.cwd());
+}
+
+// ─── 세션(대화) 저장/복원 ───────────────────────────────
+let sessionId = newSessionId();
+let sessionCreatedAt = new Date().toISOString();
+let sessionTitle = "";
+let sessionTurns = 0;
+
+/** 한 턴 끝날 때마다 현재 대화를 세션 파일로 저장한다. */
+function persistSession(userMsg: string): void {
+  if (!cm) return;
+  if (!sessionTitle) sessionTitle = userMsg.replace(/\s+/g, " ").trim().slice(0, 80);
+  sessionTurns++;
+  saveSession({
+    id: sessionId,
+    createdAt: sessionCreatedAt,
+    updatedAt: new Date().toISOString(),
+    cwd: process.cwd(),
+    title: sessionTitle,
+    turns: sessionTurns,
+    messages: cm.getHistory(),
+  });
+}
+
+/** ISO 시간 → "방금/N분 전/N시간 전/N일 전" */
+function relTime(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const m = Math.floor(diff / 60000);
+  if (m < 1) return "방금";
+  if (m < 60) return `${m}분 전`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}시간 전`;
+  return `${Math.floor(h / 24)}일 전`;
+}
+
+function homeShort(p: string): string {
+  const home = process.env.HOME ?? "";
+  return home && p.startsWith(home) ? "~" + p.slice(home.length) : p;
+}
+
+/** 메시지에서 텍스트만 뽑기(도구 호출/결과는 건너뜀). */
+function msgText(m: { role?: string; content?: unknown }): string {
+  if (typeof m.content === "string") return m.content;
+  if (Array.isArray(m.content)) return m.content.map((p) => (typeof p === "string" ? p : ((p as { text?: string })?.text ?? ""))).join(" ");
+  return "";
+}
+
+// /resume — 이전 세션을 골라 다시 연다
+async function resumeCommand(): Promise<void> {
+  if (!cm) {
+    console.log(chalk.dim("  로그인이 필요합니다. /login 후 다시 시도하세요."));
+    return;
+  }
+  const sessions = listSessions();
+  if (sessions.length === 0) {
+    console.log(chalk.dim("  저장된 세션이 없습니다."));
+    return;
+  }
+  console.log("");
+  console.log("  " + chalk.bold("이전 세션 다시 열기"));
+  const items = sessions.map((s) => {
+    const meta = chalk.dim(`· ${relTime(s.updatedAt)} · ${s.turns}턴 · ${homeShort(s.cwd)}`);
+    const label = `${s.title || "(제목 없음)"}  ${meta}`;
+    return { label, dimLabel: `${s.title} · ${relTime(s.updatedAt)}` };
+  });
+  const idx = await showSelector(items);
+  if (idx < 0) {
+    console.log(chalk.dim("  취소했습니다."));
+    return;
+  }
+  const s = loadSession(sessions[idx].id);
+  if (!s) {
+    console.log(chalk.red("  세션을 불러오지 못했습니다."));
+    return;
+  }
+  cm.loadHistory(s.messages);
+  // 이후 저장이 이 세션을 이어서 갱신하도록 포인터 전환
+  sessionId = s.id;
+  sessionCreatedAt = s.createdAt;
+  sessionTitle = s.title;
+  sessionTurns = s.turns;
+  console.log("  " + chalk.green("✓ 세션 복원: ") + (s.title || "(제목 없음)") + chalk.dim(`  (${s.turns}턴 · ${relTime(s.updatedAt)})`));
+  // 마지막 사용자/어시스턴트 대화를 짧게 리캡
+  const lastUser = [...s.messages].reverse().find((m) => m.role === "user");
+  const lastAsst = [...s.messages].reverse().find((m) => m.role === "assistant" && msgText(m).trim());
+  if (lastUser) console.log("  " + chalk.dim("· 나: ") + chalk.dim(msgText(lastUser).replace(/\s+/g, " ").slice(0, 100)));
+  if (lastAsst) console.log("  " + chalk.dim("· AI: ") + chalk.dim(msgText(lastAsst).replace(/\s+/g, " ").slice(0, 100)));
+  console.log("  " + chalk.dim("이어서 입력하면 이 대화가 계속됩니다."));
 }
 
 // ─── Model Selection ───────────────────────────────────
@@ -776,6 +866,9 @@ async function handleSlashCommand(text: string): Promise<boolean> {
 
   if (trimmed === "/mode") { cycleMode(); return true; }
 
+  // /resume — 이전 세션 다시 열기
+  if (trimmed === "/resume") { await resumeCommand(); return true; }
+
   // /dashboard — 데이터 파일로 대시보드 생성 (디자인시스템 템플릿)
   if (trimmed === "/dashboard") { await dashboardCommand(); return true; }
 
@@ -899,6 +992,7 @@ async function handleInput(text: string): Promise<void> {
   abortController = new AbortController();
   const gen = cm.run(trimmed, abortController.signal);
   await processAgentEvents(gen);
+  persistSession(trimmed);
   prompt();
 }
 
