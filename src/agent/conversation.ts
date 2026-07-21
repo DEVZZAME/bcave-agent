@@ -143,7 +143,7 @@ Exception: for a quick standard full dashboard, use create_dashboard.`,
       while (true) {
         this.trimHistory();
         if (signal?.aborted) return;
-        const response = await chat(this.client, this.messages, routed.model, {
+        const response = await chat(this.client, this.messages, routed.wire, {
           onAuthError: () => this.refreshSession(),
           signal,
         });

@@ -35,11 +35,11 @@ describe("router.classifyTask", () => {
 });
 
 describe("router.pickModel", () => {
-  it("autoRoute 시 등급별 모델 선택", () => {
-    expect(pickModel(cfg, "화면 만들어줘")).toEqual({ model: "gpt-5.4", tier: "heavy" });
-    expect(pickModel(cfg, "이게 뭐야?")).toEqual({ model: "gpt-5.4-mini", tier: "light" });
+  it("autoRoute 시 등급별 예측 모델 + wire=auto(HUB 라우팅)", () => {
+    expect(pickModel(cfg, "화면 만들어줘")).toEqual({ model: "gpt-5.4", tier: "heavy", wire: "auto" });
+    expect(pickModel(cfg, "이게 뭐야?")).toEqual({ model: "gpt-5.4-mini", tier: "light", wire: "auto" });
   });
   it("autoRoute off 면 config.model 고정(manual)", () => {
-    expect(pickModel({ ...cfg, autoRoute: false }, "화면 만들어줘")).toEqual({ model: "manual-x", tier: "manual" });
+    expect(pickModel({ ...cfg, autoRoute: false }, "화면 만들어줘")).toEqual({ model: "manual-x", tier: "manual", wire: "manual-x" });
   });
 });

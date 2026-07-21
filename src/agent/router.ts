@@ -31,9 +31,14 @@ export function classifyTask(message: string): Tier {
   return "heavy"; // 애매하면 품질 우선(무거운 쪽)
 }
 
-/** config + 메시지 → 실제 사용할 모델과 등급. autoRoute off 면 config.model 그대로. */
-export function pickModel(config: BcaveConfig, message: string): { model: string; tier: Tier | "manual" } {
-  if (!config.autoRoute) return { model: config.model, tier: "manual" };
+/** config + 메시지 → 표시용 모델(model)·등급(tier)·실제 전송값(wire).
+ *  autoRoute 시 wire="auto" 로 보내 HUB 가 정책대로 라우팅한다(등급 무관). model 은 예측값(표시용). */
+export function pickModel(
+  config: BcaveConfig,
+  message: string,
+): { model: string; tier: Tier | "manual"; wire: string } {
+  if (!config.autoRoute) return { model: config.model, tier: "manual", wire: config.model };
   const tier = classifyTask(message);
-  return { model: tier === "heavy" ? config.modelHeavy : config.modelLight, tier };
+  const model = tier === "heavy" ? config.modelHeavy : config.modelLight;
+  return { model, tier, wire: "auto" };
 }
