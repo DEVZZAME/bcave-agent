@@ -10,7 +10,8 @@ import { executeTool, getToolCategory } from "./tools.js";
 import { PermissionManager, type PermissionCategory } from "./permissions.js";
 import { saveConfig, type BcaveConfig } from "../config/config.js";
 import { pickModel, classifyTask } from "./router.js";
-import { designChoiceForRequest, systemsMenu, isAppBuild } from "../design/systems.js";
+import { isAppBuild } from "./request-classification.js";
+import { designRules, hasDesignSystem, isUiArtifactRequest } from "../design-system/runtime.js";
 import { hubRefresh } from "../auth/hub.js";
 
 const CODE_EXT = /\.(ts|tsx|js|jsx|mjs|cjs|vue|svelte|py|go|rs|java|rb|php|cs|kt|swift|scss|sass|less|css|json|astro)$/i;
@@ -154,8 +155,6 @@ export class ConversationManager {
   private cwd: string;
   private messages: ChatCompletionMessageParam[] = [];
   private pendingApprovals: Map<string, { resolve: (approved: boolean) => void }> = new Map();
-  private lastWasUi = false; // 직전 턴이 UI/대시보드 제작이었는지 (짧은 후속 수정 인식용)
-  private lastSystemId = ""; // 직전에 선택된 디자인 시스템 (후속 수정 시 유지)
 
   constructor(config: BcaveConfig, permissions: PermissionManager, cwd: string) {
     this.config = config;
@@ -166,29 +165,33 @@ export class ConversationManager {
       role: "system",
       content: `You are BCave, a CLI coding agent. You help users by reading/writing files and executing shell commands on their local machine. Working directory: ${cwd}. Always use the provided tools to interact with the filesystem and shell. Respond in the same language the user uses.
 
-ARTIFACT vs APPLICATION (decide first): if the user asks for a real SERVICE / APPLICATION (backend, API, data, accounts/auth, CRUD, persistence, a running app), build an ACTUAL multi-file, runnable project WITH A REAL BACKEND — never deliver a few static HTML files and call it a service, and never fake data/auth in the frontend. The SINGLE-self-contained-HTML rule and the design-system single-file flow below apply ONLY to standalone artifacts (a dashboard, a report, a landing/one-off page, a mockup). For applications, ignore the single-HTML rule and follow the per-request application note.
+ARTIFACT vs APPLICATION (decide first): if the user asks for a real SERVICE / APPLICATION (backend, API, data, accounts/auth, CRUD, persistence, a running app), build an ACTUAL multi-file, runnable project WITH A REAL BACKEND — never deliver a few static HTML files and call it a service, and never fake data/auth in the frontend. The SINGLE-self-contained-HTML rule below applies ONLY to standalone artifacts (a dashboard, a report, a landing/one-off page, a mockup). For applications, ignore the single-HTML rule and follow the per-request application note.
 UI / SCREENS (service & app development): When building product UI — screens, pages, components, forms, flows, features — build real, modern, production-quality web UI exactly like a general coding agent (Claude Code / Codex) would.
-DESIGN SYSTEM CHOICE (mandatory): the company has 7 design systems (1 BCAVE, 2 AXIS, 3 ATELIER, 4 PRISM, 5 PUNCH, 6 MOCHI, 7 MEOK). Whenever the user asks to build a screen / dashboard / any HTML page and has NOT picked one, do NOT build yet — ASK which of the 7 to use (they answer by number or name). A system note lists them. Once chosen (or if the user names it, or says "알아서" → you pick), you get a system note "[이번 화면/대시보드/HTML 은 "…" 디자인 시스템으로 …]" with that system's rules/tokens/components — build with ONLY those (no arbitrary colors/fonts/values). Inline its CSS via <style>{{BCAVE_DS:<id>}}</style> (token-free). Keep the chosen system across follow-up edits; only re-ask for a brand-new page.
-CONSISTENT IDENTITY, VARIED CONTENT: the same design system must ALWAYS look like the same product — identity (color, typography, spacing, components, and the standard shell/GNB) is FIXED and consistent across every output. Completely different-feeling results from the same system are a BUG. What varies each time is only the CONTENT arrangement (which sections/cards, their order, emphasis, grid) to fit the request and data — never the identity or the standard chrome. INCLUDE the essential elements the system defines (GNB/topbar, page header, container) and whatever a real screen must have; do not drop them. Each major section MUST start with the system's section-header signature — an English overline (short uppercase word) above the Korean title, with a divider line beneath — and the page may open with a hero (overline/badge + large headline + one-line description). This header format is part of the fixed identity: keep it on every section; only the content inside varies. Use the exact classes/markup from the injected design-system guide.
 Then inspect the repo and FOLLOW its existing stack and conventions: framework (React / Vue / Next / Svelte / plain HTML), styling (Tailwind / CSS Modules / styled-components / plain CSS), component library, routing, and file layout. Wire it into the codebase. If no stack exists yet, pick sensible modern defaults and say so.
-FILE RULES (mandatory): (1) SINGLE self-contained .html file — ALL CSS inside inline <style> (via {{BCAVE_DS}} + your layout styles), JS inline too; no separate .css/.js files, no external stylesheet links (a web-font <link> and an inlined chart lib are the only allowed externals). (2) ALWAYS write to a NEW file that does not already exist (e.g. <name>.html → <name>-2.html …); NEVER overwrite a previous page/dashboard, even for a "다르게/더 심플하게" iteration — so the user can keep and compare versions. (3) Save the file in the CURRENT working directory (where the user ran the command) — do NOT create or nest it inside a subfolder (never invent a project subdirectory for a single HTML deliverable).
+FILE RULES (mandatory): (1) SINGLE self-contained .html file — ALL CSS and JS inline; no separate .css/.js files, no external stylesheet links (a web-font link and an inlined chart lib are the only allowed externals). (2) ALWAYS write to a NEW file that does not already exist (e.g. <name>.html → <name>-2.html …); NEVER overwrite a previous page/dashboard, even for a "다르게/더 심플하게" iteration — so the user can keep and compare versions. (3) Save the file in the CURRENT working directory (where the user ran the command) — do NOT create or nest it inside a subfolder (never invent a project subdirectory for a single HTML deliverable).
 DATA (mandatory — the #1 cause of "data disappeared on edit"): ALWAYS inject spreadsheet data with the {{BCAVE_DATA:/abs/path#sheet}} placeholder — on the FIRST build AND on EVERY later edit/redesign. write_file resolves it to the FULL dataset at save time, so re-emitting the placeholder always re-injects all rows. The data-source path does NOT change across edits — reuse the SAME path from earlier in the conversation. When the user asks to "change / develop / redo" a data page, you are writing a NEW file (per FILE RULES) that must contain the data again: put {{BCAVE_DATA:path}} back in. NEVER hand-copy rows out of the previous HTML, NEVER paste a sample/subset, NEVER leave a data array empty (window.__DATA=[] / data:[]), and do NOT try to read the big data blob back from the old file (read_file truncates it) — just reference the original path via the placeholder. If you don't have the path, ASK for it rather than shipping empty data.
 DATA BINDING & RENDERING (mandatory — how to actually USE the injected data): the placeholder MUST go ONLY inside a script as a JS variable — <script>window.__DATA = {{BCAVE_DATA:/abs/path#sheet}};</script> (each row = an object keyed by real column names). NEVER place {{BCAVE_DATA}} inside visible HTML (a <td>, <p>, <div>…) — doing so dumps the raw JSON array as a giant wall of text (this is a severe bug). Then RENDER everything from window.__DATA in JS: compute KPIs/aggregates (sums, averages, group-by) and build tables/chart datasets by iterating the array. Tables: use the REAL column names (never "컬럼 1/2/3"), and render only a sensible slice (e.g. top 20–50 rows or an aggregated summary), NOT all thousands of rows. Charts: the labels and numbers MUST be derived from window.__DATA by aggregating it (e.g. group-by month → sum) — NEVER hardcode placeholder series like labels ['Q1'..'Q8'] / data [12,19,15,…]. Section titles must name real content ("월별 매출", "지역별 분포"), not meta/narration ("보이는 것", "다음 보기", "확인 포인트", "데이터 해석").
 MULTI-SHEET & VALUES (avoid the recurring "data missing" bugs): (1) If the workbook has MULTIPLE sheets and your dashboard needs several, inject EACH one you use as its own variable — <script>window.__월별 = {{BCAVE_DATA:path#월별}}; window.__브랜드 = {{BCAVE_DATA:path#브랜드}};</script> — or the whole map with window.__SHEETS = {{BCAVE_SHEETS:path}} then read window.__SHEETS["시트명"]. The read_file preview lists the sheet names and the exact injection snippet. (2) NEVER reference data globals you did not inject via a placeholder (window.__DATA_MAP__, __DATA_BRAND__, loadSheet(), etc. are NOT real — they resolve to empty and blank the section). Every data source a chart/table/KPI reads MUST trace back to a {{BCAVE_DATA:…}} / {{BCAVE_SHEETS:…}} placeholder in the same file. (3) Injected numbers are already real numbers (no comma strings), so +row['총매출'] / reduce sums work directly — do not re-parse. (4) The injected array is already clean row objects (title/subtitle rows auto-removed) — do NOT .slice() off leading rows to "skip headers"; that drops real data.
 DELIVERABLE CONTENT: the file contains ONLY the real product content — title, data, KPIs, charts, insights. NEVER embed meta/process narration: no "…를 바탕으로 다시 구성했습니다", no design-system/mood description, no data-source file path, no "단일 HTML 파일…" notes, no "원하시면 다음 단계로 …". Put ALL of that in your CHAT reply only.
-TITLE & HEADER: h1 is a concise, factual report title — a short noun phrase (e.g. "브랜드 매출·고객 성과 리포트"), NO trailing sentence/period, NO marketing phrasing. Keep the header compact (optional short eyebrow + short h1 + at most one brief subtitle). Follow the chosen system's heading typography tokens; do not blanket-bold every heading.
+TITLE & HEADER: h1 is a concise, factual report title — a short noun phrase (e.g. "브랜드 매출·고객 성과 리포트"), NO trailing sentence/period, NO marketing phrasing. Keep the header compact (optional short eyebrow + short h1 + at most one brief subtitle). Do not blanket-bold every heading.
 RESPONSIVE & LAYOUT (mandatory, mobile-first): always add <meta name="viewport" content="width=device-width,initial-scale=1"> and \`*{box-sizing:border-box}\`. Use fluid layouts (flex/grid with min-width:0 on children, grid tracks as minmax(0,1fr), %/rem/clamp() sizing) — never fixed px widths on containers (use max-width + width:100%). Add @media breakpoints (e.g. 640/768/1024px) so nothing overflows or breaks on mobile; media/img get max-width:100%. Long text wraps; avoid horizontal scroll. Cover UI states: hover/focus/active/disabled + loading/empty/error.
 MULTI-COLUMN ROWS (chart + side content): when a chart sits next to cards/lists/a table in the same grid row, the two columns must line up top AND bottom — never pair a FIXED-height chart box with auto-height content under align-items:start (it leaves ragged, misaligned bottoms / dead whitespace, a very common bug). Fix: put align-items:stretch on the grid and make BOTH columns fill the row height — the chart wrapper uses height:100%;min-height:280px (canvas fills it via maintainAspectRatio:false) and the side column uses height:100% (e.g. flex column that distributes its items). If you cannot make heights match, stack them vertically instead of side-by-side. The same applies to any row of side-by-side cards: give the row align-items:stretch so cards are equal height. After writing an HTML page, honor the export review — fix any 반응형/레이아웃 warnings before claiming done.
 CHARTS: to use Chart.js, inline it as <script>{{BCAVE_CHARTJS}}</script> — NOT <script src="{{BCAVE_CHARTJS}}"> (putting the library in src breaks loading → chart won't render). Put EVERY <canvas> in a fixed-height container (position:relative;height:280px) and set the chart option maintainAspectRatio:false. For spreadsheet data token-free use the {{BCAVE_DATA:/abs/path#sheet}} placeholder. These are generic utilities, not the design system.
-COMPOSITION DISCIPLINE (match the design system exactly — these are the most common failures):
-- TYPOGRAPHY comes ONLY from the system's type tokens. Every text size/weight uses font:var(--text-display-1|heading-1|body-1|…) and numbers use var(--text-data-*). NEVER hand-pick px font-sizes/weights — arbitrary sizes make it look like a different system. If a size feels missing, choose the closest token, don't invent one.
+COMPOSITION DISCIPLINE:
 - CARDS are NOT the default container. Use a card ONLY for a genuinely discrete widget (a KPI tile, one chart, one callout). Do NOT wrap whole sections, tables, or the whole page in cards — a page that is just a stack of boxes is wrong. Most content (section headers, tables, charts, prose) sits directly on the page inside the section, no card.
-- CHARTS use ONLY Chart.js with the system palette (var(--chart-1..8), grid var(--chart-grid), axis var(--chart-axis)). Do NOT hand-build bars/donuts/gauges/sparklines out of divs or SVG unless the design system explicitly ships that component — a chart that isn't in the system is a BUG. Canvas CANNOT read CSS variables: resolve tokens to real color strings in JS FIRST — const css=getComputedStyle(document.documentElement); const PAL=['--chart-1','--chart-2','--chart-3','--chart-4','--chart-5','--chart-6','--chart-7','--chart-8'].map(v=>css.getPropertyValue(v).trim()); — then use PAL (e.g. doughnut/pie backgroundColor:PAL sliced to segment count; bar backgroundColor:PAL[0] or per-bar PAL). Passing 'var(--chart-1)' straight into a Chart config renders BLACK.
-- SECTION HEADER is mandatory on every section: English overline + Korean h2 + divider (AXIS .sec-head>.kicker; ATELIER .sec-head>.overline + trailing <div class="hairline">). A bare <h2> without the overline/divider is wrong.
-- HERO headline is two-tone: wrap the accent word/line in <em> so it takes the primary color (like the system's "하나의 토큰, 두 가지 밀도." where the second line is colored). A single-color hero h1 does not match.
-- CONTRAST / DON'T FIGHT THE SYSTEM: use the design system's component colors as-is; do NOT re-declare your own colors on system components. NEVER put dark text on a dark system surface or light text on a light one — the #1 "text invisible because bg=color" bug. If a system element has a DARK background (e.g. BCAVE .hero is dark slate), every child's text/emphasis MUST be light (#fff / a light token); dark text tokens (--color-text-primary/strong, --ink-*, --color-primary) on a dark surface are invisible. When in doubt, keep the system's own text color and don't override it.
-- BRAND CI: if the chosen system provides a logo placeholder (BCAVE → {{BCAVE_LOGO}}), include it in the GNB/header — do not type the brand name as plain text in place of the logo.`,
+- Use Chart.js for data charts. Do not hand-build bars, donuts, gauges, or sparklines from divs when a real chart is appropriate.
+- Keep text contrast accessible on every surface and use a coherent visual hierarchy across the page.`,
     });
+    if (hasDesignSystem(config.designSystem)) {
+      this.messages.push({
+        role: "system",
+        content:
+          `[활성 디자인 시스템: ${config.designSystem}]\n` + designRules(config.designSystem) +
+          `\n\n대시보드/UI/화면 HTML을 만들 때 출력 계약: write_file의 content에는 ` +
+          "```html:body```와 ```js:app``` 코드펜스 두 개만 넣는다. 완성 HTML, <style>, 별도 설명을 넣지 않는다. " +
+          "CLI가 템플릿·토큰·UI CSS·Chart.js·차트 어댑터·데이터를 조립하고 린트한다.",
+      });
+    }
   }
 
   /** 저장용 대화 히스토리(시스템 프롬프트 제외 — 복원 시 현재 시스템 프롬프트를 새로 씌운다). */
@@ -275,16 +278,14 @@ COMPOSITION DISCIPLINE (match the design system exactly — these are the most c
   }
 
   async *run(userMessage: string, signal?: AbortSignal): AsyncGenerator<AgentEvent> {
-    // 화면/대시보드/HTML 제작 요청 처리 — 4개 디자인 시스템 중 선택:
-    //  - 시스템이 안 정해졌으면 만들지 말고 먼저 "1~4 중 무엇으로?" 되묻는다.
-    //  - 정해졌으면 그 시스템의 규칙/컴포넌트로 조립하되, 배치는 매번 다르게(고정 틀 금지).
     // 실제 백엔드가 있는 애플리케이션/서비스 요청 → 단일 정적 HTML 플로우가 아니라 진짜 프로젝트로 만든다.
     const appBuild = isAppBuild(userMessage);
-    const choice = appBuild
-      ? { isUi: false, system: null, needsChoice: false }
-      : designChoiceForRequest(userMessage, this.lastSystemId, this.lastWasUi);
-    this.lastWasUi = choice.isUi;
-    if (choice.system) this.lastSystemId = choice.system.id;
+    if (!appBuild && isUiArtifactRequest(userMessage) && hasDesignSystem(this.config.designSystem)) {
+      this.messages.push({
+        role: "system",
+        content: `[이번 UI 산출물은 ${this.config.designSystem} 디자인 시스템 강제 파이프라인을 사용한다. RULES.md의 클래스와 BCAVE.chart/BCAVE.fmt API만 사용하고 write_file content 출력 계약을 지켜라.]`,
+      });
+    }
     if (appBuild) {
       this.messages.push({
         role: "system",
@@ -295,43 +296,12 @@ COMPOSITION DISCIPLINE (match the design system exactly — these are the most c
           "- 구조: 여러 파일로 된 실행 가능한 프로젝트 — package.json(의존성), 폴더 구조, 서버·라우트·데이터 계층 분리, 라우팅.\n" +
           "- 실행/검증: 의존성 설치가 되고 build/typecheck 가 통과해야 한다. 실행 방법(예: npm install && npm run dev)과 주요 엔드포인트를 README 로 남긴다. (긴 실행이 필요한 서버 起動은 사용자가 하도록 안내만.)\n" +
           "- 스택: 저장소에 기존 스택이 있으면 그대로 따르고, 없으면 로컬에서 바로 도는 간단·확실한 기본값을 골라 한 줄로 밝힌다(예: Node.js+Express+SQLite(better-sqlite3), 또는 Next.js 풀스택+SQLite/Prisma). 무거운 외부 인프라(별도 DB 서버·클라우드·도커 필수)는 요구하지 말 것.\n" +
-          "- UI 스타일이 필요하면 디자인 시스템 CSS(<style>{{BCAVE_DS:1}}</style> 등)를 프론트에 참고해도 되지만, 단일 인라인 HTML 규칙은 여기 적용되지 않는다(정상적인 다중 파일 프로젝트로).]",
-      });
-    } else if (choice.isUi && choice.needsChoice) {
-      // 디자인 시스템 선택은 하니스가 결정론적으로 질문한다(약한 모델이 '먼저 물어봐라' 지시를
-      // 무시하고 바로 만들어 버리는 문제 방지). 사용자가 번호/이름으로 답하면 다음 턴에 그 시스템으로 제작.
-      const q =
-        "이 화면/대시보드를 어떤 디자인 시스템으로 만들까요? 번호나 이름으로 답해 주세요 " +
-        "(예: `1` 또는 `비케이브`). `알아서`라고 하시면 제가 하나 고릅니다.\n\n" +
-        systemsMenu();
-      this.messages.push({ role: "user", content: userMessage });
-      this.messages.push({ role: "assistant", content: q });
-      yield { type: "text", content: q };
-      yield { type: "done" };
-      return;
-    } else if (choice.system) {
-      const s = choice.system;
-      this.messages.push({
-        role: "system",
-        content:
-          `[이번 화면/대시보드/HTML 은 "${s.label}" 디자인 시스템으로 만들 것.\n` +
-          `- CSS 는 <style>{{BCAVE_DS:${s.id}}}</style> 로 인라인(토큰 0). 이 시스템의 토큰/컴포넌트 규칙만 사용(임의 색·폰트·값 금지).\n` +
-          `- 단일 HTML 파일(모든 CSS 인라인), 항상 새 파일명으로 저장.\n` +
-          `- 일관성: 같은 시스템은 항상 같은 정체성(색·타이포·간격·컴포넌트·표준 셸/GNB)을 유지해 "같은 제품"처럼 보여야 한다. 느낌이 매번 완전히 달라지면 오류다.\n` +
-          `- 가변은 오직 "콘텐츠 배치": 어떤 섹션/카드를 어떤 순서·강조·그리드로 둘지만 요청/데이터에 맞게 다르게. 정체성·표준 크롬은 고정, 콘텐츠 배열만 매번 다르게.\n` +
-          `- 필수 요소를 빼지 말 것: 시스템의 표준 크롬(GNB/topbar·페이지 헤더·컨테이너)과 화면에 당연히 있어야 할 요소를 항상 포함.\n` +
-          `- 섹션 헤더 패턴(정체성의 일부, 필수): 각 주요 섹션은 "영문 오버라인(대문자 짧은 영단어) + 국문 제목 + 하단 구분선" 헤더로 시작한다. 최상단엔 히어로(오버라인/뱃지 + 큰 제목 + 설명). 정확한 클래스·마크업은 아래 가이드를 그대로 따를 것 — 이 헤더 형식은 모든 섹션에서 동일하게 유지(콘텐츠만 가변).\n` +
-          `- 폰트는 반드시 타입 토큰만: 모든 글자 크기/굵기는 font:var(--text-display-1|heading-1|body-1|…), 숫자는 var(--text-data-*). 임의 px 폰트크기 금지(사이즈가 다르면 다른 시스템처럼 보인다).\n` +
-          `- 카드는 기본 컨테이너가 아님: 카드는 KPI 타일·단일 차트·콜아웃 같은 "독립 위젯"에만. 섹션 전체/표/페이지를 카드로 감싸지 말 것(상자 나열 금지). 대부분의 내용(섹션 헤더·표·차트·본문)은 카드 없이 섹션 안에 바로 둔다.\n` +
-          `- 차트는 Chart.js + 시스템 팔레트(var(--chart-1..8)/grid/axis)만. div·SVG로 직접 만든 바/도넛/게이지 등 시스템에 없는 그래프 금지.\n` +
-          `- 히어로 h1은 2색: 강조 단어/줄을 <em>로 감싸 강조색(primary)이 되게(디자인시스템 "하나의 토큰, 두 가지 밀도."처럼). 단색 h1은 시스템과 불일치.\n` +
-          s.guide +
-          `]`,
+          "- 단일 인라인 HTML 규칙은 여기 적용되지 않는다(정상적인 다중 파일 프로젝트로).]",
       });
     }
     // B) 계획 먼저: 실질적 개발 작업(앱 빌드 또는 UI 단일 파일 제외의 heavy)은 큰 걸 한 번에 쏟지 말고 쪼개서 구현
     //    → 작고 명확한 단계는 약한 모델이 가장 안정적으로 처리하는 지점.
-    if (appBuild || (!choice.isUi && classifyTask(userMessage) === "heavy")) {
+    if (appBuild || classifyTask(userMessage) === "heavy") {
       this.messages.push({
         role: "system",
         content:

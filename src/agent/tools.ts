@@ -5,12 +5,13 @@ import { exec } from "node:child_process";
 import { glob } from "glob";
 import XLSX from "xlsx";
 import { CHARTJS_SOURCE } from "../assets/chartjs.js";
-import { BCAVE_LOGO } from "../assets/bcave-logo.js";
-import { DESIGN_SYSTEMS, DS_SAFETY } from "../design/systems.js";
 import type { PermissionCategory } from "./permissions.js";
+import { loadConfig } from "../config/config.js";
+import { assembleDesignArtifact, hasDesignSystem, lintDesignArtifact } from "../design-system/runtime.js";
 
 // 스프레드시트 로드: 텍스트(csv·tsv·txt·html)는 UTF-8 원본으로(raw), 그 외는 버퍼로.
 const _TEXT_EXT = new Set([".csv", ".tsv", ".txt", ".tab", ".html", ".htm"]);
+const designLintAttempts = new Map<string, number>();
 
 /** 바이트를 텍스트로 디코딩 — UTF-8 로 깨지면(대체문자 다수) 한국어 EUC-KR/CP949 로 재시도. BOM 제거. */
 function readBytesAsText(filePath: string): string {
@@ -434,13 +435,6 @@ function resolvePlaceholders(content: string, cwd: string): string {
     const [rawPath, sheet] = String(spec).split("#");
     return spreadsheetToJSON(path.resolve(cwd, rawPath.trim()), sheet?.trim());
   });
-  // {{BCAVE_LOGO}} → B.CAVE 브랜드 CI 로고 SVG 인라인 (색/크기는 .bcave-logo CSS 로 제어)
-  content = content.split("{{BCAVE_LOGO}}").join(BCAVE_LOGO);
-  // {{BCAVE_DS:id}} → 선택된 디자인 시스템 CSS(+안전 보정) 인라인 (토큰 0)
-  content = content.replace(/\{\{BCAVE_DS:([\w-]+)\}\}/g, (_m, id) => {
-    const s = DESIGN_SYSTEMS[id] ?? Object.values(DESIGN_SYSTEMS).find((x) => x.key === String(id).toLowerCase());
-    return s ? s.css + "\n" + DS_SAFETY : "";
-  });
   // 흔한 실수 교정: <script src="{{BCAVE_CHARTJS}}"></script> (라이브러리를 src 에 넣음) → 인라인 <script>…</script>
   content = content.replace(
     /<script\b[^>]*\bsrc=["']\{\{BCAVE_CHARTJS\}\}["'][^>]*>\s*<\/script>/gi,
@@ -478,8 +472,8 @@ function reviewHtml(content: string, filePath: string): string[] {
   if (!/\.html?$/i.test(filePath)) return [];
   const issues: string[] = [];
   const isPage = /<body|<html/i.test(content);
-  // 대시보드(디자인시스템/데이터 주입)인지 — 데이터 관련 검토는 대시보드에만 적용(일반 UI 오탐 방지)
-  const isDashboard = /\{\{BCAVE_(DS|DATA|CHARTJS)|window\.__DATA|class=["'][^"']*\b(?:ds-|rp-)/.test(content);
+  // 데이터 대시보드인지 — 데이터 관련 검토는 대시보드에만 적용(일반 UI 오탐 방지)
+  const isDashboard = /\{\{BCAVE_(DATA|SHEETS|CHARTJS)|window\.__DATA|window\.__SHEETS/.test(content);
 
   // 1) 미해결 자리표시자 (항상)
   const ph = content.match(/\{\{[A-Za-z_][^}]*\}\}/g);
@@ -643,34 +637,13 @@ function reviewHtml(content: string, filePath: string): string[] {
     }
   }
 
-  // 정의되지 않은 CSS 변수 참조 검사 — 모델이 지어낸 토큰(--text-data-1, --text-heading-4 등)은
-  // font/색이 무효화돼 숫자가 작게·색이 안 먹는 원인. (var(--x, fallback) 형태는 폴백이 있어 제외)
+  // 정의되지 않은 CSS 변수 참조 검사. var(--x, fallback) 형태는 폴백이 있어 제외한다.
   if (/:root\s*\{/.test(content) && /var\(--/.test(content)) {
     const defined = new Set([...content.matchAll(/(--[\w-]+)\s*:/g)].map((m) => m[1]));
     const undef = new Set<string>();
     for (const m of content.matchAll(/var\(\s*(--[\w-]+)\s*\)/g)) if (!defined.has(m[1])) undef.add(m[1]);
     if (undef.size) {
-      issues.push(`정의되지 않은 CSS 변수 ${undef.size}개를 씁니다(${[...undef].slice(0, 6).join(", ")}). 지어낸 토큰은 무효가 되어 폰트·색이 안 먹습니다. 디자인 시스템에 실제로 있는 토큰만 쓰세요(숫자 폰트는 var(--text-data-xl|lg|md|sm)).`);
-    }
-  }
-  // 디자인시스템 시그니처(섹션 헤더/히어로/타이포 토큰) 준수 검사
-  const isTokenSystem = content.includes("--text-heading-1") || content.includes("--text-data");
-  if (isTokenSystem) {
-    // 시스템이 .sec-head 를 정의했는데 본문에서 안 씀 → 섹션 헤더 시그니처 누락
-    if (/\.sec-head\s*\{/.test(content) && !/class="[^"]*\bsec-head\b/.test(content)) {
-      issues.push('섹션 헤더 시그니처 누락: 시스템에 .sec-head(영문 오버라인+제목+구분선)가 있는데 본문에서 안 썼습니다. 각 섹션 제목을 밋밋한 <h2> 대신 <div class="sec-head">…</div> 헤더로 감싸세요(가이드 마크업 그대로).');
-    }
-    // 히어로를 쓰면서 h1 이 단색(강조 <em> 없음) → 2색 헤드라인 불일치
-    if (/class="[^"]*\bhero\b/.test(content)) {
-      const heroH1 = content.match(/class="[^"]*\bhero\b[\s\S]{0,400}?<h1[^>]*>([\s\S]*?)<\/h1>/i);
-      if (heroH1 && !/<em\b/i.test(heroH1[1])) {
-        issues.push("히어로 h1 2색 누락: 강조 단어/줄을 <em>…</em>로 감싸 강조색이 되게 하세요(디자인시스템의 2색 헤드라인과 맞춤).");
-      }
-    }
-    // 타입 토큰 대신 임의 px 폰트를 인라인으로 남발 → 폰트 크기 불일치
-    const inlinePx = content.match(/style="[^"]*font-size:\s*\d+(?:\.\d+)?px/gi);
-    if (inlinePx && inlinePx.length > 5) {
-      issues.push(`타이포 토큰 미사용: 인라인 임의 px 폰트가 ${inlinePx.length}곳입니다. 글자 크기는 font:var(--text-display-1|heading-1|body-1|…), 숫자는 var(--text-data-*) 토큰만 쓰세요(임의 px 는 다른 시스템처럼 보입니다).`);
+      issues.push(`정의되지 않은 CSS 변수 ${undef.size}개를 씁니다(${[...undef].slice(0, 6).join(", ")}). 변수가 무효가 되어 스타일이 적용되지 않으므로 변수를 정의하거나 폴백 값을 추가하세요.`);
     }
   }
 
@@ -748,10 +721,31 @@ export async function executeTool(
       }
       case "write_file": {
         const filePath = path.resolve(cwd, args.path as string);
+        let source = args.content as string;
+        const design = loadConfig().designSystem;
+        if (/\.html?$/i.test(filePath) && hasDesignSystem(design)) {
+          try {
+            source = assembleDesignArtifact(design, source, filePath);
+          } catch (err) {
+            return `File not written. ${(err as Error).message}`;
+          }
+        }
         // 데이터·Chart.js 자리표시자 → 실제 리소스로 치환 (프롬프트 토큰 절약)
-        const content = resolvePlaceholders(args.content as string, cwd);
+        const content = resolvePlaceholders(source, cwd);
         fs.mkdirSync(path.dirname(filePath), { recursive: true });
         fs.writeFileSync(filePath, content, "utf-8");
+        if (/\.html?$/i.test(filePath) && hasDesignSystem(design)) {
+          const lint = lintDesignArtifact(design, filePath);
+          if (!lint.pass) {
+            const attempts = (designLintAttempts.get(filePath) ?? 0) + 1;
+            designLintAttempts.set(filePath, attempts);
+            if (attempts >= 2) {
+              return `File written: ${args.path}\n✗ ${design} 디자인 린트가 자동수정 최대 2회 후에도 실패했습니다. 사용자에게 아래 위반 목록을 보고하고 더 이상 자동수정하지 마세요:\n${JSON.stringify(lint.violations, null, 2)}`;
+            }
+            return `File written: ${args.path}\n⚠ ${design} 디자인 린트 FAIL (자동수정 ${attempts}/2). 다음 violations를 수정해 BODY/APP_SCRIPT 두 블록으로 같은 파일에 다시 저장하세요:\n${JSON.stringify(lint.violations, null, 2)}`;
+          }
+          designLintAttempts.delete(filePath);
+        }
         // 내보내기 전 자동 검토 (데이터 누락·자리표시자·문법). 문제가 있으면 모델이 고쳐 다시 쓰게 알린다.
         const issues = reviewHtml(content, args.path as string);
         if (issues.length) {
@@ -807,15 +801,15 @@ export async function executeTool(
         return truncate(out, MAX_TOOL_CHARS);
       }
       case "shell_exec": {
-        // 산출물(HTML/대시보드)을 shell(cat/echo/python/node 등)로 직접 써서 디자인시스템·데이터·검토
-        // 파이프라인을 우회하는 것을 차단 — 반드시 write_file 로 저장해야 {{BCAVE_DS}}·{{BCAVE_DATA}} 가 적용된다.
+        // 산출물(HTML/대시보드)을 shell(cat/echo/python/node 등)로 직접 써서 데이터·검토
+        // 파이프라인을 우회하는 것을 차단 — 반드시 write_file 로 저장해야 데이터 주입과 자동 검토가 적용된다.
         const cmd = String(args.command ?? "");
         const writesHtml =
           /(^|[^\w])(>>?|tee)\s*[^\s|&;]*\.html\b/i.test(cmd) || // 리다이렉션/tee 로 .html 생성
           (/(write_text|writeFileSync|writeFile|fs\.write|open\s*\([^)]*['"][wa])/i.test(cmd) && /\.html\b/i.test(cmd)) || // 프로그램적으로 .html 쓰기
           /<!doctype html|<html[\s>]/i.test(cmd); // 명령 안에 HTML 본문이 통째로 들어있음
         if (writesHtml) {
-          return "[차단됨] HTML/대시보드 파일을 shell(cat/echo/python/node 스크립트 등)로 직접 만들지 마세요. 반드시 write_file 도구로 저장해야 디자인 시스템 CSS(<style>{{BCAVE_DS:<id>}}</style>)·데이터 주입({{BCAVE_DATA:경로}})·자동 검토가 적용됩니다. write_file 로 <style>{{BCAVE_DS:선택된번호}}</style> 를 포함해 다시 저장하세요. (디자인 시스템이 아직 안 정해졌으면 먼저 사용자에게 1~7 중 무엇으로 할지 물어보세요.)";
+          return "[차단됨] HTML/대시보드 파일을 shell(cat/echo/python/node 스크립트 등)로 직접 만들지 마세요. 반드시 write_file 도구로 저장해야 데이터 주입({{BCAVE_DATA:경로}})과 자동 검토가 적용됩니다.";
         }
         const output = await new Promise<string>((resolve) => {
           const child = exec(args.command as string, {

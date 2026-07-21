@@ -11,6 +11,7 @@ import fs from "node:fs";
 import { execSync, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import nodePath from "node:path";
+import { hasDesignSystem, lintDesignArtifact } from "../design-system/runtime.js";
 
 // ─── CLI Args ──────────────────────────────────────────
 const args = process.argv.slice(2);
@@ -47,6 +48,8 @@ if (args.includes("--help") || args.includes("-h")) {
     login                              사내 계정으로 로그인
     logout                             로그아웃
     update                             최신 버전으로 업데이트
+    design use bcave                   UI/대시보드 디자인 시스템 활성화
+    design lint <file>                 생성된 HTML 디자인 규칙 검사
 
   ${chalk.bold("Options")}
     --hub-url <url>                    HUB 주소 지정 (예: http://hub.bcave.internal)
@@ -66,10 +69,11 @@ const nonFlagArgs = args.filter((a, i) => {
 });
 
 // 서브커맨드: `bcave login` / `bcave logout` / `bcave update`
-let subcommand: "login" | "logout" | "update" | null = null;
-if (["login", "logout", "update"].includes(nonFlagArgs[0])) {
-  subcommand = nonFlagArgs.shift() as "login" | "logout" | "update";
+let subcommand: "login" | "logout" | "update" | "design" | null = null;
+if (["login", "logout", "update", "design"].includes(nonFlagArgs[0])) {
+  subcommand = nonFlagArgs.shift() as "login" | "logout" | "update" | "design";
 }
+const designArgs = subcommand === "design" ? nonFlagArgs.splice(0) : [];
 if (nonFlagArgs.length > 0) {
   initialPrompt = nonFlagArgs.join(" ");
 }
@@ -1077,6 +1081,30 @@ const LOGO = [
 ];
 
 async function main(): Promise<void> {
+  if (subcommand === "design") {
+    const [action, value] = designArgs;
+    if (action === "use") {
+      if (!value || !hasDesignSystem(value)) {
+        console.error(chalk.red(`  ✗ 디자인 시스템을 찾을 수 없습니다: ${value || "(없음)"}`));
+        process.exit(1);
+      }
+      saveConfig({ designSystem: value });
+      console.log(chalk.green(`  ✓ 디자인 시스템 활성화: ${value}`));
+      process.exit(0);
+    }
+    if (action === "lint") {
+      if (!value) {
+        console.error(chalk.red("  ✗ 검사할 HTML 파일을 지정하세요: bcave design lint <파일>"));
+        process.exit(2);
+      }
+      const active = loadConfig().designSystem || "bcave";
+      const result = lintDesignArtifact(active, nodePath.resolve(value));
+      console.log(JSON.stringify(result, null, 2));
+      process.exit(result.pass ? 0 : 1);
+    }
+    console.log("  bcave design use bcave\n  bcave design lint <file>");
+    process.exit(2);
+  }
   console.clear();
   console.log("");
   for (const line of LOGO) {

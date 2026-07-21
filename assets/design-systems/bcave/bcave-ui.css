@@ -1,0 +1,264 @@
+/* BCAVE:ASSET ui v0.2 ============================================
+   BCAVE Design System — Component Stylesheet
+   bcave-tokens.css 뒤에 로드. 구현자는 이 클래스만 사용한다.
+   컴포넌트 스타일 재작성·인라인 style 금지 (RULES.md 참조)
+   ================================================================ */
+
+/* ---------- Base ---------- */
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  font-family:var(--font-family-base);background:var(--color-bg);
+  color:var(--color-text-primary);font-size:15px;line-height:1.55;
+  letter-spacing:var(--letter-spacing-tight);-webkit-font-smoothing:antialiased;
+}
+button{font-family:inherit;cursor:pointer}
+.num{font-feature-settings:var(--font-feature-data);letter-spacing:-0.02em}
+h1,h2{letter-spacing:-0.02em}
+
+/* ---------- Layout ---------- */
+.page{max-width:1080px;margin:0 auto;padding:0 var(--space-6) var(--space-16)}
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:var(--card-gap)}
+.grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:var(--card-gap)}
+.grid-4{display:grid;grid-template-columns:repeat(4,1fr);gap:var(--card-gap)}
+.grid-2 .full,.grid-3 .full,.grid-4 .full{grid-column:1/-1}
+.row-flex{display:flex;gap:11px;flex-wrap:wrap;align-items:center}
+.stack{display:flex;flex-direction:column;gap:var(--space-4)}
+.chart-box{position:relative;height:260px}
+.chart-box.tall{height:340px}
+.chart-box.donut{height:230px}
+
+/* ---------- Topbar ---------- */
+.topbar{position:sticky;top:0;z-index:20;background:rgba(255,255,255,.93);backdrop-filter:blur(10px);border-bottom:1px solid var(--color-border)}
+.topbar-inner{max-width:1080px;margin:0 auto;padding:0 var(--space-6);height:58px;display:flex;align-items:center;gap:var(--space-4)}
+.logo{display:flex;align-items:center;gap:10px;font-weight:900;font-size:16px;letter-spacing:.03em;color:var(--color-primary)}
+.logo svg{height:var(--logo-topbar-height);width:auto;display:block}
+.topbar nav{display:flex;gap:2px;margin-left:auto;overflow-x:auto}
+.topbar nav a{color:var(--color-text-secondary);text-decoration:none;font-size:13px;font-weight:600;padding:7px 11px;border-radius:var(--radius-xs);white-space:nowrap;transition:all var(--duration-fast) var(--easing-standard)}
+.topbar nav a:hover{background:var(--slate-100);color:var(--color-primary)}
+
+/* ---------- Hero (PPT 표지 문법: 다크 + 흰 헤어라인 + 우측 정렬) ---------- */
+.hero{margin-top:var(--space-8);background:var(--color-surface-dark);border-radius:var(--radius-lg);padding:var(--space-16) var(--space-10) var(--space-12);color:var(--color-text-inverse);box-shadow:var(--shadow-2)}
+.hero .top{text-align:right}
+.hero h1{font-size:36px;line-height:48px;font-weight:800;display:flex;justify-content:flex-end;align-items:center;gap:16px;flex-wrap:wrap}
+.hero h1 svg{height:var(--logo-hero-height);width:auto;flex-shrink:1;max-width:60%}
+.hero .rule{height:2px;background:var(--color-hairline-on-dark);margin:var(--space-5) 0 var(--space-3)}
+.hero .dept{text-align:right;font-size:14px;font-weight:600;color:var(--color-text-on-dark-sub)}
+
+/* ---------- Section 헤더 (PPT 본문 문법: 좌측 라운드 탭 + 오버라인) ---------- */
+.sec-head{position:relative;padding-left:26px;margin-bottom:var(--space-6);padding-top:var(--space-12)}
+.sec-head::before{content:"";position:absolute;left:0;top:calc(var(--space-12) - 6px);width:11px;height:52px;background:var(--color-primary);border-radius:var(--title-tab-radius)}
+.sec-head .kicker{font-size:13px;font-weight:500;color:var(--color-text-secondary)}
+.sec-head h2{font-size:26px;line-height:34px;font-weight:800;color:var(--color-text-strong);margin-top:2px}
+.sec-head p{color:var(--color-text-secondary);font-size:14px;margin-top:var(--space-2)}
+.sub-title{display:inline-block;font-size:14.5px;font-weight:700;color:var(--color-primary);border-bottom:1.5px solid var(--slate-500);padding-bottom:5px;margin-bottom:var(--space-4)}
+.no-label{display:inline-flex;align-items:center;justify-content:center;width:26px;height:20px;background:var(--numbered-label-bg);color:var(--white);font-size:11px;font-weight:700;border-radius:3px;font-family:var(--font-family-mono)}
+.mini-label{font-size:11px;font-weight:700;color:var(--color-text-tertiary);letter-spacing:.06em;text-transform:uppercase;margin:14px 0 8px}
+.mini-label:first-child{margin-top:0}
+
+/* ---------- Card ---------- */
+.card{background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-lg);box-shadow:var(--shadow-1);padding:var(--card-padding)}
+.card>h3{font-size:15px;font-weight:800;margin-bottom:var(--space-5);color:var(--color-text-strong)}
+.card .sub{font-size:12.5px;color:var(--color-text-tertiary);font-weight:500;margin:-14px 0 16px}
+
+/* ---------- Button ---------- */
+.btn{height:var(--control-height-md);padding:0 var(--control-padding-x);font-size:var(--control-font-size);font-weight:700;border-radius:var(--control-radius);border:1px solid transparent;display:inline-flex;align-items:center;gap:7px;transition:all var(--duration-fast) var(--easing-standard)}
+.btn:focus-visible{outline:none;box-shadow:var(--focus-ring)}
+.btn-primary{background:var(--color-primary);color:var(--color-text-inverse)}
+.btn-primary:hover{background:var(--color-primary-hover)}
+.btn-primary:active{background:var(--color-primary-active)}
+.btn-secondary{background:var(--slate-500);color:var(--white)}
+.btn-secondary:hover{background:var(--slate-600)}
+.btn-outline{background:var(--color-surface);border-color:var(--color-border-strong);color:var(--color-text-primary)}
+.btn-outline:hover{border-color:var(--slate-500);color:var(--color-primary)}
+.btn-ghost{background:transparent;color:var(--slate-700)}
+.btn-ghost:hover{background:var(--slate-100)}
+.btn-danger{background:var(--color-danger);color:var(--white)}
+.btn-danger:hover{filter:brightness(.9)}
+.btn-sm{height:var(--control-height-sm);font-size:13px;padding:0 12px}
+.btn-lg{height:var(--control-height-lg);font-size:15px;padding:0 22px}
+.btn[disabled]{background:var(--slate-100);color:var(--slate-300);border-color:transparent;cursor:not-allowed}
+.btn.loading::before{content:"";width:14px;height:14px;border:2px solid rgba(255,255,255,.4);border-top-color:var(--white);border-radius:50%;animation:bcv-spin .7s linear infinite}
+.btn-icon{width:var(--control-height-md);padding:0;justify-content:center}
+@keyframes bcv-spin{to{transform:rotate(360deg)}}
+
+/* ---------- Field ---------- */
+.field label{display:block;font-size:13px;font-weight:700;margin-bottom:7px;color:var(--color-text-primary)}
+.field .box{position:relative}
+.field input,.field select,.field textarea{width:100%;height:var(--control-height-md);padding:0 var(--space-3);font-size:var(--control-font-size);font-family:inherit;border:1px solid var(--color-border-strong);border-radius:var(--control-radius);background:var(--color-surface);color:var(--color-text-primary);transition:all var(--duration-fast) var(--easing-standard)}
+.field textarea{height:auto;padding:10px var(--space-3);resize:vertical;min-height:84px;line-height:1.5}
+.field input:focus,.field select:focus,.field textarea:focus{outline:none;border-color:var(--slate-700);box-shadow:var(--focus-ring)}
+.field input::placeholder,.field textarea::placeholder{color:var(--slate-300)}
+.field.error input{border-color:var(--color-danger)}
+.field.error input:focus{box-shadow:var(--focus-ring-danger)}
+.field.error .help{color:var(--color-danger)}
+.field.success input{border-color:var(--color-success)}
+.field input:disabled{background:var(--slate-50);color:var(--slate-300);cursor:not-allowed}
+.field .help{font-size:12px;color:var(--color-text-tertiary);margin-top:6px;font-weight:500}
+.field .box .lead{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--color-text-tertiary);display:flex}
+.field .box.has-lead input{padding-left:36px}
+
+/* ---------- Choice (checkbox / radio / toggle) ---------- */
+.choice{display:inline-flex;align-items:center;gap:9px;font-size:14px;font-weight:500;cursor:pointer;user-select:none}
+.choice input{position:absolute;opacity:0;pointer-events:none}
+.choice .cb{width:var(--checkbox-size);height:var(--checkbox-size);border:1.5px solid var(--slate-300);border-radius:5px;background:var(--color-surface);display:inline-flex;align-items:center;justify-content:center;transition:all var(--duration-fast) var(--easing-standard);flex-shrink:0}
+.choice .cb svg{opacity:0;transform:scale(.6);transition:all var(--duration-fast) var(--easing-standard)}
+.choice input:checked+.cb{background:var(--color-primary);border-color:var(--color-primary)}
+.choice input:checked+.cb svg{opacity:1;transform:scale(1)}
+.choice input:focus-visible+.cb{box-shadow:var(--focus-ring)}
+.choice .rd{width:var(--checkbox-size);height:var(--checkbox-size);border:1.5px solid var(--slate-300);border-radius:50%;background:var(--color-surface);display:inline-flex;align-items:center;justify-content:center;transition:all var(--duration-fast) var(--easing-standard);flex-shrink:0}
+.choice .rd::after{content:"";width:8px;height:8px;border-radius:50%;background:var(--color-primary);transform:scale(0);transition:transform var(--duration-fast) var(--easing-standard)}
+.choice input:checked+.rd{border-color:var(--color-primary)}
+.choice input:checked+.rd::after{transform:scale(1)}
+.choice.disabled{opacity:.45;cursor:not-allowed}
+.toggle{position:relative;display:inline-flex;align-items:center;gap:10px;font-size:14px;font-weight:500;cursor:pointer}
+.toggle input{position:absolute;opacity:0}
+.toggle .tk{width:var(--toggle-width);height:var(--toggle-height);background:var(--slate-200);border-radius:var(--radius-full);position:relative;transition:background var(--duration-base) var(--easing-standard);flex-shrink:0}
+.toggle .tk::after{content:"";position:absolute;left:3px;top:3px;width:calc(var(--toggle-height) - 6px);height:calc(var(--toggle-height) - 6px);background:var(--white);border-radius:50%;box-shadow:0 1px 3px rgba(0,0,0,.2);transition:transform var(--duration-base) var(--easing-standard)}
+.toggle input:checked+.tk{background:var(--color-primary)}
+.toggle input:checked+.tk::after{transform:translateX(calc(var(--toggle-width) - var(--toggle-height)))}
+.toggle input:focus-visible+.tk{box-shadow:var(--focus-ring)}
+
+/* ---------- Badge · Chip ---------- */
+.badge{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:700;padding:4px 11px;border-radius:var(--radius-full)}
+.badge i{width:5px;height:5px;border-radius:50%;background:currentColor;font-style:normal}
+.badge-primary{background:var(--slate-100);color:var(--color-primary)}
+.badge-mid{background:var(--slate-500);color:var(--white)}
+.badge-dark{background:var(--color-primary);color:var(--white)}
+.badge-success{background:var(--color-success-subtle);color:var(--color-success)}
+.badge-danger{background:var(--color-danger-subtle);color:var(--color-danger)}
+.badge-neutral{background:var(--slate-50);color:var(--color-text-secondary)}
+.chip{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:600;padding:6px 13px;border-radius:var(--radius-full);border:1px solid var(--color-border-strong);background:var(--color-surface);cursor:pointer;transition:all var(--duration-fast) var(--easing-standard);color:var(--color-text-primary)}
+.chip:hover{border-color:var(--slate-500)}
+.chip.on{background:var(--color-primary);border-color:var(--color-primary);color:var(--white)}
+.chip .x{font-size:14px;line-height:1;opacity:.6}
+
+/* ---------- Tabs ---------- */
+.tabs{display:flex;gap:2px;border-bottom:1.5px solid var(--slate-100)}
+.tabs button{height:var(--tab-height);padding:0 16px;background:none;border:none;font-size:14px;font-weight:600;color:var(--color-text-tertiary);position:relative;transition:color var(--duration-fast) var(--easing-standard)}
+.tabs button:hover{color:var(--color-text-primary)}
+.tabs button.on{color:var(--color-primary);font-weight:700}
+.tabs button.on::after{content:"";position:absolute;left:8px;right:8px;bottom:-1.5px;height:2.5px;background:var(--color-primary);border-radius:2px}
+.tabs2{display:inline-flex;background:var(--slate-100);border-radius:var(--radius-sm);padding:3px;gap:2px}
+.tabs2 button{height:32px;padding:0 14px;border:none;background:transparent;border-radius:var(--radius-xs);font-size:13px;font-weight:600;color:var(--color-text-secondary);transition:all var(--duration-fast) var(--easing-standard)}
+.tabs2 button.on{background:var(--color-surface);color:var(--color-primary);box-shadow:var(--shadow-1);font-weight:700}
+
+/* ---------- Alert ---------- */
+.alert{display:flex;gap:11px;padding:13px 15px;border-radius:var(--radius-md);font-size:13.5px;line-height:1.5;border:1px solid}
+.alert b{display:block;font-size:14px;margin-bottom:2px}
+.alert .ic{width:20px;height:20px;border-radius:50%;color:var(--white);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;flex-shrink:0;margin-top:1px}
+.alert-info{background:var(--slate-50);border-color:var(--slate-200);color:var(--color-primary)}
+.alert-info .ic{background:var(--color-primary)}
+.alert-neutral{background:var(--color-surface);border-color:var(--slate-200);color:var(--color-text-primary)}
+.alert-neutral .ic{background:var(--slate-500)}
+.alert-success{background:var(--color-success-subtle);border-color:#CBE3D8;color:#1F5A41}
+.alert-success .ic{background:var(--color-success)}
+.alert-danger{background:var(--color-danger-subtle);border-color:#EFD2D0;color:#8E322D}
+.alert-danger .ic{background:var(--color-danger)}
+
+/* ---------- Tooltip · Dropdown ---------- */
+.tooltip{position:relative;display:inline-block}
+.tooltip .tip{position:absolute;bottom:calc(100% + 9px);left:50%;transform:translateX(-50%);background:var(--tooltip-bg);color:var(--white);font-size:12px;font-weight:600;padding:7px 12px;border-radius:var(--radius-sm);white-space:nowrap;box-shadow:var(--shadow-2)}
+.tooltip .tip::after{content:"";position:absolute;top:100%;left:50%;transform:translateX(-50%);border:5px solid transparent;border-top-color:var(--tooltip-bg)}
+.dropdown{width:210px;background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-md);box-shadow:var(--shadow-2);overflow:hidden;padding:5px}
+.dropdown a{display:flex;align-items:center;gap:9px;padding:9px 11px;border-radius:var(--radius-xs);font-size:13.5px;font-weight:500;color:var(--color-text-primary);text-decoration:none;transition:background var(--duration-fast) var(--easing-standard)}
+.dropdown a:hover{background:var(--slate-50)}
+.dropdown a.on{background:var(--slate-100);color:var(--color-primary);font-weight:700}
+.dropdown hr{border:none;border-top:1px solid var(--slate-50);margin:5px 0}
+.dropdown a.danger{color:var(--color-danger)}
+
+/* ---------- Progress · Stepper ---------- */
+.progress{height:var(--progress-height);background:var(--slate-100);border-radius:var(--radius-full);overflow:hidden}
+.progress i{display:block;height:100%;background:var(--color-primary);border-radius:var(--radius-full)}
+.progress.mid i{background:var(--slate-500)}
+.progress.green i{background:var(--color-success)}
+/* 진행률은 인라인 style이 아니라 아래 10% 단위 유틸로 지정 */
+.w-0{width:0}.w-10{width:10%}.w-20{width:20%}.w-25{width:25%}.w-30{width:30%}.w-40{width:40%}
+.w-45{width:45%}.w-50{width:50%}.w-60{width:60%}.w-70{width:70%}.w-72{width:72%}.w-75{width:75%}
+.w-80{width:80%}.w-90{width:90%}.w-100{width:100%}
+.stepper{display:flex;align-items:center}
+.stepper .st{display:flex;align-items:center;gap:9px;font-size:13px;font-weight:600;color:var(--color-text-tertiary)}
+.stepper .st .n{width:26px;height:26px;border-radius:50%;background:var(--slate-100);color:var(--slate-400);display:flex;align-items:center;justify-content:center;font-size:12.5px;font-weight:700;flex-shrink:0}
+.stepper .st.done .n{background:var(--color-primary);color:var(--white)}
+.stepper .st.done{color:var(--color-text-primary)}
+.stepper .st.now .n{background:var(--color-surface);border:2px solid var(--color-primary);color:var(--color-primary)}
+.stepper .st.now{color:var(--color-primary)}
+.stepper .ln{flex:1;height:2px;background:var(--slate-100);margin:0 10px;min-width:24px}
+.stepper .ln.done{background:var(--color-primary)}
+
+/* ---------- Avatar · Breadcrumb · Pagination ---------- */
+.avatar{border-radius:50%;background:var(--slate-100);color:var(--slate-700);display:inline-flex;align-items:center;justify-content:center;font-weight:800;flex-shrink:0}
+.avatar.a-sm{width:var(--avatar-size-sm);height:var(--avatar-size-sm);font-size:11px}
+.avatar.a-md{width:var(--avatar-size-md);height:var(--avatar-size-md);font-size:13px}
+.avatar.a-lg{width:var(--avatar-size-lg);height:var(--avatar-size-lg);font-size:16px}
+.avatar.mid{background:var(--slate-500);color:var(--white)}
+.avatar.dark{background:var(--color-primary);color:var(--white)}
+.avatar-group{display:inline-flex}
+.avatar-group .avatar{border:2px solid var(--color-surface);margin-left:-8px}
+.avatar-group .avatar:first-child{margin-left:0}
+.crumb{display:flex;align-items:center;gap:7px;font-size:13px;font-weight:500;color:var(--color-text-tertiary)}
+.crumb a{color:var(--color-text-tertiary);text-decoration:none}
+.crumb a:hover{color:var(--color-primary)}
+.crumb b{color:var(--color-text-primary);font-weight:700}
+.pagination{display:flex;gap:5px}
+.pagination button{min-width:32px;height:32px;padding:0 6px;border:1px solid var(--color-border-strong);background:var(--color-surface);border-radius:var(--radius-xs);font-size:13px;font-weight:600;color:var(--color-text-secondary);transition:all var(--duration-fast) var(--easing-standard)}
+.pagination button:hover{border-color:var(--slate-500);color:var(--color-primary)}
+.pagination button.on{background:var(--color-primary);border-color:var(--color-primary);color:var(--white)}
+.pagination button:disabled{opacity:.4;cursor:not-allowed}
+
+/* ---------- Modal ---------- */
+.modal-backdrop{position:fixed;inset:0;background:rgba(38,65,72,.55);display:flex;align-items:center;justify-content:center;z-index:40;padding:var(--space-6)}
+.modal{width:100%;max-width:var(--modal-width);background:var(--color-surface);border-radius:var(--radius-lg);box-shadow:var(--shadow-3);padding:var(--space-6)}
+.modal h4{font-size:17px;font-weight:800;margin-bottom:8px;color:var(--color-text-strong)}
+.modal p{font-size:13.5px;color:var(--color-text-secondary);line-height:1.6}
+.modal .foot{display:flex;gap:9px;justify-content:flex-end;margin-top:var(--space-5)}
+
+/* ---------- Skeleton ---------- */
+.skel{border-radius:var(--radius-xs);background:linear-gradient(90deg,var(--skeleton-base) 25%,var(--skeleton-highlight) 50%,var(--skeleton-base) 75%);background-size:200% 100%;animation:bcv-shimmer 1.4s infinite}
+@keyframes bcv-shimmer{to{background-position:-200% 0}}
+
+/* ---------- KPI ---------- */
+.kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:var(--card-gap)}
+.kpi{background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-lg);box-shadow:var(--shadow-1);padding:var(--space-5)}
+.kpi.dark{background:var(--color-surface-dark);border-color:var(--color-surface-dark)}
+.kpi.dark .lb{color:var(--color-text-on-dark-sub)}
+.kpi.dark .val{color:var(--white)}
+.kpi.dark .delta.up{color:#7FC5A8}
+.kpi .lb{font-size:12.5px;color:var(--color-text-secondary);font-weight:700}
+.kpi .val{font-size:var(--kpi-value-size);font-weight:800;margin-top:7px;letter-spacing:-0.02em;color:var(--color-text-strong)}
+.kpi .sub{font-size:12px;color:var(--color-text-tertiary);font-weight:500;margin-top:5px}
+.kpi .delta{font-size:12.5px;font-weight:700;margin-top:5px;display:inline-flex;align-items:center;gap:4px}
+.delta.up{color:var(--color-increase)}
+.delta.down{color:var(--color-decrease)}
+
+/* ---------- Table (PPT 표 헤더: slate-500 + white) ---------- */
+table.bcv{width:100%;border-collapse:collapse;font-size:var(--table-font-size)}
+table.bcv th{text-align:left;font-weight:700;color:var(--table-header-color);font-size:12.5px;padding:0 var(--table-padding-x);height:40px;background:var(--table-header-bg)}
+table.bcv th:first-child{border-radius:var(--radius-xs) 0 0 0}
+table.bcv th:last-child{border-radius:0 var(--radius-xs) 0 0}
+table.bcv td{padding:0 var(--table-padding-x);height:var(--table-row-height);border-bottom:1px solid var(--slate-100);font-weight:500}
+table.bcv td.r,table.bcv th.r{text-align:right}
+table.bcv tbody tr:hover td{background:var(--slate-50)}
+table.bcv td.up{color:var(--color-increase);font-weight:700}
+table.bcv td.down{color:var(--color-decrease);font-weight:700}
+
+/* ---------- Chart legend (HTML 범례 — Chart.js 기본 범례 대신) ---------- */
+.chart-legend{display:flex;gap:var(--space-4);flex-wrap:wrap;font-size:12.5px;font-weight:600;color:var(--color-text-secondary);margin-top:var(--space-4)}
+.chart-legend .li{display:flex;align-items:center;gap:7px}
+.chart-legend .sq{width:11px;height:11px;border-radius:3px;border:1px solid rgba(38,65,72,.15)}
+.chart-legend .ln{width:16px;height:3px;border-radius:2px}
+
+/* ---------- Small util ---------- */
+.small-row{display:flex;justify-content:space-between;align-items:center;font-size:13px;padding:8px 0;border-bottom:1px solid var(--slate-50)}
+.small-row:last-child{border-bottom:none}
+.text-secondary{color:var(--color-text-secondary)}
+.text-tertiary{color:var(--color-text-tertiary)}
+
+/* ---------- Responsive ---------- */
+@media (max-width:840px){
+  .grid-2,.grid-3,.grid-4{grid-template-columns:1fr}
+  .kpi-grid{grid-template-columns:repeat(2,1fr)}
+  .hero h1{font-size:25px;line-height:36px}
+  .hero{padding:var(--space-10) var(--space-6)}
+}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{transition:none!important;animation:none!important}}
