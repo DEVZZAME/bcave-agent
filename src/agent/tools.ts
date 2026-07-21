@@ -305,6 +305,16 @@ function sheetToObjects(ws: XLSX.WorkSheet): { columns: string[]; rows: Record<s
   const rows: Record<string, unknown>[] = [];
   for (let r = h + 1; r < aoa.length; r++) {
     const row = aoa[r] || [];
+    // 한 시트에 여러 표가 세로로 이어진 경우 첫 표만 반환한다.
+    // 예: 브랜드 요약 표 아래 "고객 세그먼트 분포" 제목 + 새 헤더가 이어지는 구조.
+    // 데이터가 이미 시작된 뒤 단일 셀 섹션 제목 다음에 다열 텍스트 헤더가 오면 표 경계로 본다.
+    const filledNow = row.map(_cellStr).filter(Boolean);
+    const next = aoa[r + 1] || [];
+    const filledNext = next.map(_cellStr).filter(Boolean);
+    const nextTextRatio = filledNext.length
+      ? filledNext.filter((c) => !/^[-+]?\d[\d,.%₩$€¥£\s]*$/.test(c)).length / filledNext.length
+      : 0;
+    if (rows.length > 0 && filledNow.length === 1 && filledNext.length >= 2 && nextTextRatio >= 0.75) break;
     if (isJunkRow(row, columns.length)) continue; // 각주·범례·합계 행 제외
     const obj: Record<string, unknown> = {};
     for (let c = 0; c < columns.length; c++) obj[columns[c]] = coerceCell(row[c] ?? null);

@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
+import XLSX from "xlsx";
 import { executeTool, getToolCategory, TOOL_DEFINITIONS } from "../tools.js";
 
 describe("Tools", () => {
@@ -54,6 +55,23 @@ describe("Tools", () => {
     it("returns error for missing file", async () => {
       const result = await executeTool("read_file", { path: "nope.txt" }, testDir);
       expect(result).toContain("Error");
+    });
+
+    it("stops at a second vertical table instead of mixing its rows", async () => {
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.aoa_to_sheet([
+        ["브랜드", "총매출", "주문건수"],
+        ["A", 100, 2],
+        ["B", 200, 3],
+        ["고객 세그먼트 분포", null, null],
+        ["세그먼트", "고객수", "비중"],
+        ["VIP", 10, 0.2],
+      ]);
+      XLSX.utils.book_append_sheet(wb, ws, "브랜드별요약");
+      XLSX.writeFile(wb, path.join(testDir, "multi-table.xlsx"));
+      const result = await executeTool("read_file", { path: "multi-table.xlsx" }, testDir);
+      expect(result).toContain("약 2행 × 3열");
+      expect(result).not.toContain("VIP | 10");
     });
   });
 

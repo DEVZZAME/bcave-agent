@@ -44,4 +44,24 @@ describe("BCAVE design pipeline", () => {
     expect(result.violations.map((v) => v.rule)).toEqual(expect.arrayContaining(["R2-no-inline-style", "R3-alien-hex", "R5-no-raw-chart"]));
     fs.rmSync(dir, { recursive: true, force: true });
   });
+
+  it("rejects invented hero layouts and semantic chart mistakes", () => {
+    const { dir, file } = writeArtifact([
+      "```html:body",
+      '<section class="hero"><div class="hero-copy"><h1>성과</h1></div><div class="hero-grid"><div class="kpi">잘못된 카드</div></div></section>',
+      '<div class="page"><div class="kpi dark"><div class="val num" id="kpiCust"></div></div><canvas id="c"></canvas></div>',
+      "```",
+      "```js:app",
+      "const rows = window.__DATA || [];",
+      "document.getElementById('kpiCust').textContent = BCAVE.fmt.num(3) + '건';",
+      "BCAVE.chart.donut(document.getElementById('c'), {labels: rows.map(r=>r.name), data: rows.map(r=>r.value)});",
+      "BCAVE.chart.line(document.getElementById('c'), {unit:'krw', series:[{label:'총매출',data:[]},{label:'주문건수',data:[]}]});",
+      "```",
+    ].join("\n"));
+    const rules = lintDesignArtifact("bcave", file).violations.map((v) => v.rule);
+    expect(rules).toEqual(expect.arrayContaining([
+      "R6-unknown-class", "R11-donut-limit", "R12-mixed-units", "R13-customer-unit", "R14-hero-structure", "R14-hero-no-kpi",
+    ]));
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
 });

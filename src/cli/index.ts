@@ -324,6 +324,12 @@ function toolResultLine(name: string, result: string): string | null {
   }
   if (/^\[바이너리/.test(r)) return null;
   if (name === "write_file") {
+    if (/^File not written\./.test(r)) {
+      return chalk.red("    ✗ 저장 안 됨") + chalk.dim(" · " + r.replace(/^File not written\.\s*/, "").split("\n")[0].slice(0, 100));
+    }
+    if (/^File written:.*\n✗/.test(r)) {
+      return chalk.red("    ✗ 검증 실패") + chalk.dim(" · 자동수정 한도 초과");
+    }
     if (/⚠/.test(r)) {
       const detail = r.split("\n").slice(1).join(" ").replace(/\s+/g, " ").trim().slice(0, 90);
       return chalk.yellow("    ⚠ 검토 경고") + (detail ? chalk.dim(" · " + detail) : "");
@@ -1097,8 +1103,13 @@ async function main(): Promise<void> {
         console.error(chalk.red("  ✗ 검사할 HTML 파일을 지정하세요: bcave design lint <파일>"));
         process.exit(2);
       }
+      const target = nodePath.resolve(value);
+      if (!fs.existsSync(target)) {
+        console.error(chalk.red(`  ✗ 파일을 찾을 수 없습니다: ${target}`));
+        process.exit(2);
+      }
       const active = loadConfig().designSystem || "bcave";
-      const result = lintDesignArtifact(active, nodePath.resolve(value));
+      const result = lintDesignArtifact(active, target);
       console.log(JSON.stringify(result, null, 2));
       process.exit(result.pass ? 0 : 1);
     }

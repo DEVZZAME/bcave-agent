@@ -188,8 +188,11 @@ COMPOSITION DISCIPLINE:
         content:
           `[활성 디자인 시스템: ${config.designSystem}]\n` + designRules(config.designSystem) +
           `\n\n대시보드/UI/화면 HTML을 만들 때 출력 계약: write_file의 content에는 ` +
-          "```html:body```와 ```js:app``` 코드펜스 두 개만 넣는다. 완성 HTML, <style>, 별도 설명을 넣지 않는다. " +
-          "CLI가 템플릿·토큰·UI CSS·Chart.js·차트 어댑터·데이터를 조립하고 린트한다.",
+          "한 번의 호출로 ```html:body```와 ```js:app``` 코드펜스 두 개를 함께 넣는다. 두 블록을 따로 저장하거나 완성 HTML, <style>, 별도 설명을 넣지 않는다. " +
+          "CLI가 템플릿·토큰·UI CSS·Chart.js·차트 어댑터·데이터를 조립하고 린트한다. " +
+          "차트는 동일 축에 동일 단위만 사용하고, 도넛은 상위 5개+기타(최대 6조각), 고객 수 단위는 '명'으로 쓴다. " +
+          "히어로를 쓰면 반드시 <section class=\"hero\"><div class=\"top\"><h1>제목</h1><div class=\"rule\"></div><div class=\"dept\">부서 · 기간</div></div></section> 구조만 사용한다. hero-copy/hero-grid 같은 클래스를 발명하거나 히어로 안에 KPI를 넣지 않는다. " +
+          "완료 응답 전 write_file 결과가 반드시 '검토 통과'여야 한다. 실패/경고를 저장 성공으로 간주하지 말고 수정한다. 완료 응답에는 파일명과 검증 통과만 간결히 쓰며 '원하시면/다음 단계' 제안은 넣지 않는다.",
       });
     }
   }
