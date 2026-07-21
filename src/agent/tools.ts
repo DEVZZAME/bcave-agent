@@ -171,20 +171,52 @@ function readSpreadsheet(filePath: string, displayPath: string): string {
     if (csv.trim()) parts.push(`# 시트: ${name} (약 ${rows}행 × ${cols}열)\n${colLine}${csv}`);
   }
   const body = parts.join("\n\n") || "(빈 스프레드시트)";
-  // 컬럼·값을 파악하는 용도. 전체 데이터를 결과물에 넣을 땐 손으로 옮기거나 스크립트를 쓰지 말고
-  // 자리표시자로 넣으세요: <script>window.__DATA = {{BCAVE_DATA:파일경로}};</script> (전체 JSON 자동 주입).
+  const sheetNames = wb.SheetNames;
+  const multi = sheetNames.length > 1;
+  // 데이터 주입 방법(중요): 손으로 옮기거나 스크립트 없이, 자리표시자로 전체 JSON 을 넣는다.
+  // 숫자는 이미 number(콤마 없음), 날짜는 문자열, 각 행 = 실제 컬럼명 키 객체. 제목행은 자동 스킵됨.
+  const recipe = multi
+    ? `이 파일은 시트가 ${sheetNames.length}개(${sheetNames.join(", ")})입니다. 필요한 시트를 각각 변수로 주입하세요:\n` +
+      `  <script>\n` +
+      sheetNames.map((n) => `  window.__${n.replace(/[^\w가-힣]/g, "")} = {{BCAVE_DATA:${displayPath}#${n}}};`).join("\n") +
+      `\n  </script>\n` +
+      `또는 전체를 한 번에: <script>window.__SHEETS = {{BCAVE_SHEETS:${displayPath}}};</script> → window.__SHEETS["시트명"] 로 접근.`
+    : `<script>window.__DATA = {{BCAVE_DATA:${displayPath}}};</script> 한 줄이면 전체 행이 JSON 배열로 주입됩니다.`;
   const header =
     `[엑셀 파일을 표(CSV)로 변환해 읽었습니다: ${displayPath}\n` +
-    `※ 컬럼·값 확인용입니다. 결과 HTML 에 전체 데이터를 넣을 땐 npm·스크립트 없이 ` +
-    `\`<script>window.__DATA = {{BCAVE_DATA:${displayPath}}};</script>\` 한 줄을 쓰면 전체 행이 JSON 배열로 자동 주입됩니다(각 행 = 컬럼명 키 객체).]\n\n`;
+    `※ 아래는 컬럼·값 확인용 미리보기입니다. 결과 HTML 에는 이 표를 손으로 옮기지 말고 다음처럼 자리표시자로 데이터를 주입하세요:\n` +
+    `${recipe}\n` +
+    `주의: 존재하지 않는 전역(window.__DATA_MAP__, loadSheet() 등)을 지어내지 말 것 — 위 자리표시자만이 데이터를 주입한다. 숫자는 이미 number 라 +row['컬럼'] 로 바로 합산 가능(콤마 문자열 아님). window.__DATA 는 이미 정리된 행 객체 배열이니 .slice() 로 앞행을 건너뛰지 말 것(제목행은 자동 제거됨).]\n\n`;
   return header + truncate(body, MAX_READ_CHARS, "표가 큼(앞부분만)");
 }
 
 /** 시트에서 진짜 헤더 행을 찾아 행 객체 배열로 변환.
  *  많은 엑셀이 1행에 제목/부제(병합셀)를 두고 실제 컬럼명은 2~3행에 둔다 —
  *  그대로 sheet_to_json 하면 헤더가 "__EMPTY" 로 깨지므로, 앞쪽에서 "거의 꽉 찬" 첫 행을 헤더로 본다. */
+// 셀 값을 집계 가능한 형태로 정규화: 숫자는 진짜 number, 날짜는 읽기 좋은 문자열,
+// "13,531,000" 처럼 텍스트로 저장된 천단위 숫자도 number 로. (그래야 +row[key] 가 NaN 이 안 됨)
+function coerceCell(v: unknown): unknown {
+  if (v == null) return null;
+  if (v instanceof Date) {
+    const iso = v.toISOString();
+    return iso.slice(11, 19) === "00:00:00" ? iso.slice(0, 10) : iso.slice(0, 19).replace("T", " ");
+  }
+  if (typeof v === "number" || typeof v === "boolean") return v;
+  if (typeof v === "string") {
+    const t = v.trim();
+    // 순수 숫자(+콤마 천단위, 선택적 소수/부호) → number. 통화기호·퍼센트·단위가 붙은 건 문자열 유지.
+    if (/^[-+]?\d{1,3}(?:,\d{3})+(?:\.\d+)?$/.test(t) || /^[-+]?\d+\.\d+$/.test(t)) {
+      const n = Number(t.replace(/,/g, ""));
+      if (Number.isFinite(n)) return n;
+    }
+    return v;
+  }
+  return v;
+}
+
 function sheetToObjects(ws: XLSX.WorkSheet): { columns: string[]; rows: Record<string, unknown>[] } {
-  const aoa = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, defval: null, raw: false, blankrows: false });
+  // raw:true → 숫자/날짜를 네이티브 값으로(콤마 문자열 방지). 날짜는 cellDates 로 Date 객체.
+  const aoa = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, defval: null, raw: true, blankrows: false });
   if (!aoa.length) return { columns: [], rows: [] };
   const nonEmpty = (r: unknown[]) => r.filter((c) => c !== null && c !== undefined && String(c).trim() !== "").length;
   const maxCols = Math.max(...aoa.map(nonEmpty));
@@ -204,10 +236,22 @@ function sheetToObjects(ws: XLSX.WorkSheet): { columns: string[]; rows: Record<s
     const row = aoa[r] || [];
     if (nonEmpty(row) === 0) continue;
     const obj: Record<string, unknown> = {};
-    for (let c = 0; c < columns.length; c++) obj[columns[c]] = row[c] ?? null;
+    for (let c = 0; c < columns.length; c++) obj[columns[c]] = coerceCell(row[c] ?? null);
     rows.push(obj);
   }
   return { columns, rows };
+}
+
+/** 워크북의 모든 시트를 {시트명: 행객체[]} 맵으로 (다중 시트 대시보드용 {{BCAVE_SHEETS}} 치환). */
+function workbookToSheetMap(filePath: string): string {
+  try {
+    const wb = readWorkbook(filePath);
+    const map: Record<string, unknown[]> = {};
+    for (const name of wb.SheetNames) map[name] = sheetToObjects(wb.Sheets[name]).rows.slice(0, 100_000);
+    return JSON.stringify(map);
+  } catch {
+    return "{}";
+  }
 }
 
 /** 스프레드시트를 행 객체 JSON 배열로 (자리표시자 {{BCAVE_DATA}} 치환용). 날짜는 실제 날짜로 변환. */
@@ -263,7 +307,11 @@ function looksBinary(text: string): boolean {
 
 /** 데이터·Chart.js 자리표시자를 실제 리소스로 치환. */
 function resolvePlaceholders(content: string, cwd: string): string {
-  // {{BCAVE_DATA:파일경로[#시트]}} → 전체 데이터 JSON (npm·스크립트 불필요, 토큰 0)
+  // {{BCAVE_SHEETS:파일경로}} → 모든 시트를 {시트명: 행객체[]} 맵으로 (다중 시트 대시보드용). {{BCAVE_DATA}} 보다 먼저 치환.
+  content = content.replace(/\{\{BCAVE_SHEETS:([^}]+)\}\}/g, (_m, spec) => {
+    return workbookToSheetMap(path.resolve(cwd, String(spec).split("#")[0].trim()));
+  });
+  // {{BCAVE_DATA:파일경로[#시트]}} → 한 시트의 전체 데이터 JSON (npm·스크립트 불필요, 토큰 0)
   content = content.replace(/\{\{BCAVE_DATA:([^}]+)\}\}/g, (_m, spec) => {
     const [rawPath, sheet] = String(spec).split("#");
     return spreadsheetToJSON(path.resolve(cwd, rawPath.trim()), sheet?.trim());
@@ -345,6 +393,15 @@ function reviewHtml(content: string, filePath: string): string[] {
     // 차트가 window.__DATA 대신 지어낸 하드코딩 수열(Q1..Qn, 임의 정수)을 쓰는 신호
     if (/window\.__DATA/.test(content) && /labels\s*:\s*\[\s*['"]Q1['"]/i.test(content)) {
       issues.push("차트가 실데이터 대신 하드코딩된 가짜 수열(['Q1','Q2'…])을 씁니다. window.__DATA 를 집계(group-by/합계 등)해 labels·data 를 만드세요.");
+    }
+    // 존재하지 않는 데이터 전역/헬퍼를 지어냄 → 그 섹션이 빈값으로 렌더
+    if (/window\.__DATA_MAP__|window\.__DATA_[A-Z]|\bloadSheet\s*\(/.test(content) &&
+        !/window\.__SHEETS\s*=\s*\{\{BCAVE_SHEETS/.test(content)) {
+      issues.push("주입하지 않은 데이터 전역/헬퍼(window.__DATA_MAP__, loadSheet() 등)를 참조합니다 → 그 섹션이 빈값이 됩니다. 필요한 시트를 {{BCAVE_DATA:경로#시트명}} 로 각각 주입하거나 window.__SHEETS = {{BCAVE_SHEETS:경로}} 로 넣고 window.__SHEETS['시트명'] 로 읽으세요.");
+    }
+    // 정리된 데이터에 .slice(N) 으로 앞행을 '헤더인 줄 알고' 버리는 오류
+    if (/(?:window\.__\w+|sheets\.\w+|__SHEETS\[[^\]]+\])\s*(?:\|\|\s*\[\s*\])?\s*\)?\s*\.slice\(\s*[1-9]/.test(content)) {
+      issues.push("주입된 데이터에 .slice(1+) 로 앞 행을 건너뜁니다. 데이터는 이미 정리된 행 객체 배열(제목행 자동 제거)이라 .slice 로 앞행을 버리면 실제 데이터가 사라집니다.");
     }
     // 고정 높이 차트 박스 + 2단 grid + align-items:start → 좌(차트)·우(카드) 아래끝 어긋남
     const twoColGrid = /grid-template-columns\s*:\s*[^;{}]*(?:fr|minmax)[^;{}]*(?:fr|minmax)/i.test(content);
