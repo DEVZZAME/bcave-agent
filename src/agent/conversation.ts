@@ -1,5 +1,7 @@
 import OpenAI from "openai";
-import { spawnSync } from "node:child_process";
+import { spawnSync, spawn } from "node:child_process";
+import net from "node:net";
+import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
 import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
@@ -45,6 +47,87 @@ function runVerify(cmds: string[], cwd: string): { cmd: string; output: string }
     }
   }
   return null;
+}
+
+/** 서버 시작 명령 감지 — package.json 의 dev/start/serve. */
+function detectStartCommand(cwd: string): string | null {
+  try {
+    const pkg = path.join(cwd, "package.json");
+    if (!fs.existsSync(pkg)) return null;
+    const scripts = (JSON.parse(fs.readFileSync(pkg, "utf8")).scripts || {}) as Record<string, string>;
+    for (const n of ["dev", "start", "serve", "dev:server", "server", "start:dev"]) if (scripts[n]) return `npm run ${n} --silent`;
+    return null;
+  } catch { return null; }
+}
+
+/** OS 가 배정하는 빈 포트 하나. */
+function findFreePort(): Promise<number> {
+  return new Promise((resolve) => {
+    const srv = net.createServer();
+    srv.once("error", () => resolve(3000 + Math.floor(Math.random() * 2000)));
+    srv.listen(0, () => { const p = (srv.address() as net.AddressInfo).port; srv.close(() => resolve(p)); });
+  });
+}
+
+/** 해당 포트로 HTTP GET 이 어떤 응답이든 받으면 서버가 살아있다고 본다. */
+function httpPing(port: number, timeoutMs = 1500): Promise<boolean> {
+  return new Promise((resolve) => {
+    const req = http.get({ host: "127.0.0.1", port, path: "/", timeout: timeoutMs }, (res) => { res.destroy(); resolve(true); });
+    req.on("error", () => resolve(false));
+    req.on("timeout", () => { req.destroy(); resolve(false); });
+  });
+}
+
+/** 앱을 실제로 띄워 응답하는지 확인(스모크). 시작 명령이 없으면 스킵(통과 처리). */
+async function smokeTest(cwd: string, signal?: AbortSignal): Promise<{ ok: boolean; skipped?: boolean; detail: string; startCmd: string }> {
+  const startCmd = detectStartCommand(cwd);
+  if (!startCmd) return { ok: true, skipped: true, detail: "", startCmd: "" };
+  const port = await findFreePort();
+  const logs: string[] = [];
+  const collect = (b: Buffer) => { logs.push(b.toString()); while (logs.join("").length > 20000) logs.shift(); };
+  const child = spawn(startCmd, { cwd, shell: true, detached: true, env: { ...process.env, PORT: String(port), NODE_ENV: "development", BROWSER: "none" } });
+  child.stdout?.on("data", collect);
+  child.stderr?.on("data", collect);
+  let exited: number | null = null;
+  child.on("exit", (code) => { exited = code ?? 0; });
+
+  const kill = () => {
+    try { if (child.pid) process.kill(-child.pid, "SIGTERM"); } catch { /* 그룹 없음 */ }
+    try { if (child.pid) process.kill(child.pid, "SIGTERM"); } catch { /* 이미 종료 */ }
+    const t = setTimeout(() => { try { if (child.pid) process.kill(-child.pid, "SIGKILL"); } catch { /* noop */ } }, 2000);
+    (t as unknown as { unref?: () => void }).unref?.();
+  };
+  // 이 프로세스 스스로 죽어도 서버 좀비를 남기지 않도록.
+  const onExit = () => kill();
+  process.once("exit", onExit);
+
+  const candidates = (): number[] => {
+    const set = new Set<number>([port]);
+    const text = logs.join("");
+    for (const m of text.matchAll(/(?:localhost|127\.0\.0\.1|0\.0\.0\.0|::1)?:(\d{2,5})\b/g)) set.add(+m[1]);
+    for (const m of text.matchAll(/port[\s:=]+(\d{2,5})/gi)) set.add(+m[1]);
+    return [...set].filter((p) => p > 0 && p < 65536);
+  };
+
+  const deadline = Date.now() + 35000; // 서버 기동(특히 Next dev)까지 넉넉히
+  let up = false;
+  try {
+    while (Date.now() < deadline) {
+      if (signal?.aborted) break;
+      if (exited !== null && exited !== 0) break; // 크래시로 종료
+      for (const p of candidates()) { if (await httpPing(p)) { up = true; break; } }
+      if (up) break;
+      await new Promise((r) => setTimeout(r, 700));
+    }
+  } finally {
+    process.removeListener("exit", onExit);
+    kill();
+  }
+
+  if (up) return { ok: true, detail: "", startCmd };
+  const tail = logs.join("").slice(-4000).trim();
+  const reason = exited !== null && exited !== 0 ? `서버가 시작 직후 종료됨(exit ${exited})` : "제한 시간 내 HTTP 응답 없음(서버가 기동/바인딩 실패했거나 PORT 를 안 씀)";
+  return { ok: false, detail: `[스모크 실패: ${reason}] 시작 명령: ${startCmd}\n서버는 반드시 process.env.PORT 를 사용해 바인딩해야 합니다.\n${tail || "(출력 없음)"}`, startCmd };
 }
 
 export interface ToolCallRequest {
@@ -306,6 +389,25 @@ COMPOSITION DISCIPLINE (match the design system exactly — these are the most c
               continue;
             }
             yield { type: "verify", status: "pass", cmd: verifyCmds.join(" && ") };
+          }
+          // A-2) 앱이면 서버를 실제로 띄워 HTTP 응답(헬스체크)까지 확인. 실패 시 로그를 되먹여 고친다.
+          if (appBuild && this.config.autoVerify && this.config.smokeTest && codeTouched && verifyRounds < this.config.maxVerifyRounds && !signal?.aborted) {
+            yield { type: "verify", status: "run", cmd: "서버 실행 헬스체크(스모크)" };
+            const smoke = await smokeTest(this.cwd, signal);
+            if (!smoke.ok) {
+              verifyRounds++;
+              codeTouched = false;
+              this.messages.push({ role: "assistant", content: message.content ?? "" });
+              this.messages.push({
+                role: "user",
+                content:
+                  `[스모크 테스트 실패] 서버를 띄워 확인했지만 HTTP 응답을 못 받았습니다. 원인을 고쳐 실제로 뜨게 하세요(서버는 반드시 process.env.PORT 로 바인딩, 시작 스크립트 dev/start 정상 동작, 의존성 설치). 완료하면 마무리만 하면 자동 재확인됩니다.\n\n${smoke.detail}`,
+              });
+              yield { type: "verify", status: "fail", cmd: "서버 실행 헬스체크(스모크)", detail: smoke.detail };
+              lastText = "";
+              continue;
+            }
+            if (!smoke.skipped) yield { type: "verify", status: "pass", cmd: `서버 실행 헬스체크 통과 (${smoke.startCmd})` };
           }
           this.messages.push({ role: "assistant", content: message.content ?? "" });
           yield { type: "done" };

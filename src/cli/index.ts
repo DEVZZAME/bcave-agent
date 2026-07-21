@@ -96,6 +96,7 @@ const COMMANDS = [
   { name: "/resume", desc: "이전 세션 다시 열기" },
   { name: "/model", desc: "모델 선택 (auto 용도별 라우팅 · heavy/light <id> · <id> 고정)" },
   { name: "/verify", desc: "코드 수정 후 자동 검증-수정 루프 on/off" },
+  { name: "/smoke", desc: "앱 생성 후 서버 띄워 헬스체크 on/off" },
   { name: "/usage", desc: "사용량/한도 확인" },
   { name: "/login", desc: "사내 계정 로그인" },
   { name: "/logout", desc: "로그아웃" },
@@ -872,6 +873,19 @@ async function handleSlashCommand(text: string): Promise<boolean> {
       console.log(chalk.green(`  ✓ 자동 검증-수정 ${arg === "on" ? "ON" : "OFF"}`) + chalk.dim("  (코드 수정 후 build/typecheck 자동 실행·자가수정)"));
     } else {
       console.log("  " + chalk.dim(`자동 검증-수정: ${config.autoVerify ? "ON" : "OFF"}  ·  /verify on|off 로 전환`));
+    }
+    return true;
+  }
+
+  if (trimmed === "/smoke" || trimmed.startsWith("/smoke ")) {
+    const arg = trimmed.slice(6).trim().toLowerCase();
+    if (arg === "on" || arg === "off") {
+      saveConfig({ smokeTest: arg === "on" });
+      config = loadConfig();
+      rebuildCM();
+      console.log(chalk.green(`  ✓ 앱 스모크 테스트 ${arg === "on" ? "ON" : "OFF"}`) + chalk.dim("  (앱 생성 후 서버 띄워 HTTP 응답 확인)"));
+    } else {
+      console.log("  " + chalk.dim(`앱 스모크 테스트: ${config.smokeTest ? "ON" : "OFF"}  ·  /smoke on|off 로 전환`));
     }
     return true;
   }

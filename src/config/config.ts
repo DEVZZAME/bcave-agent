@@ -21,6 +21,7 @@ export interface BcaveConfig {
   autoVerify: boolean; // 코드 수정 후 build/typecheck 를 자동 실행해 실패 시 모델이 스스로 고치게 함
   verifyCmds: string[]; // 검증 명령 직접 지정(비면 package.json 스크립트에서 자동 감지)
   maxVerifyRounds: number; // 자동 검증-수정 반복 최대 횟수
+  smokeTest: boolean; // 앱 생성 후 서버를 실제로 띄워 HTTP 응답(헬스체크)까지 확인
 
   // ── 레거시/폴백: 직접 OpenAI 키 사용 ──
   apiKey: string;
@@ -44,6 +45,7 @@ const DEFAULT_CONFIG: BcaveConfig = {
   autoVerify: true,
   verifyCmds: [],
   maxVerifyRounds: 2,
+  smokeTest: true,
   apiKey: "",
   baseUrl: "https://api.openai.com/v1",
 };
