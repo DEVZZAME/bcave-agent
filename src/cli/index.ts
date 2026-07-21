@@ -363,12 +363,31 @@ function exitWorkInput(): void {
 
 const SPIN = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 let spinnerTimer: ReturnType<typeof setInterval> | null = null;
+// 요청 1건의 시작 시각(경과·소요 시간 표시용). 0이면 미측정.
+let runStartMs = 0;
+// 라이브 스피너용 압축 표기: 45초 / 1:20 / 12:05
+function fmtClock(ms: number): string {
+  const s = Math.floor(ms / 1000);
+  if (s < 60) return `${s}초`;
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  return `${m}:${String(r).padStart(2, "0")}`;
+}
+// 완료 메시지용 친화 표기: 45초 / 1분 20초
+function fmtDuration(ms: number): string {
+  const s = Math.round(ms / 1000);
+  if (s < 60) return `${s}초`;
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  return r ? `${m}분 ${r}초` : `${m}분`;
+}
 function startSpinner(label = "작업 중…"): void {
   stopSpinner();
   let i = 0;
   spinnerTimer = setInterval(() => {
+    const el = runStartMs ? chalk.dim(`· ${fmtClock(Date.now() - runStartMs)} 경과 `) : "";
     process.stdout.write(
-      `\r\x1b[2K  ${chalk.cyan(SPIN[i % SPIN.length])} ${chalk.dim(label)} ${chalk.dim("· ESC 로 중지")}`,
+      `\r\x1b[2K  ${chalk.cyan(SPIN[i % SPIN.length])} ${chalk.dim(label)} ${el}${chalk.dim("· ESC 로 중지")}`,
     );
     i++;
   }, 80);
@@ -848,6 +867,7 @@ async function handleSlashCommand(text: string): Promise<boolean> {
 async function processAgentEvents(gen: AsyncGenerator<AgentEvent>): Promise<void> {
   processing = true;
   aborted = false;
+  runStartMs = Date.now();
   enterWorkInput();
   startSpinner();
   try {
@@ -917,8 +937,15 @@ async function processAgentEvents(gen: AsyncGenerator<AgentEvent>): Promise<void
     exitWorkInput();
     processing = false;
   }
+  const elapsedMs = runStartMs ? Date.now() - runStartMs : 0;
+  runStartMs = 0;
   if (aborted) {
-    console.log("  " + chalk.yellow("■ 중지했습니다."));
+    console.log(
+      "  " + chalk.yellow("■ 중지했습니다.") + (elapsedMs ? chalk.dim(` · ${fmtDuration(elapsedMs)} 작업`) : ""),
+    );
+    console.log("");
+  } else if (elapsedMs) {
+    console.log("  " + chalk.dim(`✓ ${fmtDuration(elapsedMs)} 만에 완료`));
     console.log("");
   }
 }
