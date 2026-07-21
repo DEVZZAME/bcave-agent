@@ -637,6 +637,16 @@ function reviewHtml(content: string, filePath: string): string[] {
     }
   }
 
+  // 정의되지 않은 CSS 변수 참조 검사 — 모델이 지어낸 토큰(--text-data-1, --text-heading-4 등)은
+  // font/색이 무효화돼 숫자가 작게·색이 안 먹는 원인. (var(--x, fallback) 형태는 폴백이 있어 제외)
+  if (/:root\s*\{/.test(content) && /var\(--/.test(content)) {
+    const defined = new Set([...content.matchAll(/(--[\w-]+)\s*:/g)].map((m) => m[1]));
+    const undef = new Set<string>();
+    for (const m of content.matchAll(/var\(\s*(--[\w-]+)\s*\)/g)) if (!defined.has(m[1])) undef.add(m[1]);
+    if (undef.size) {
+      issues.push(`정의되지 않은 CSS 변수 ${undef.size}개를 씁니다(${[...undef].slice(0, 6).join(", ")}). 지어낸 토큰은 무효가 되어 폰트·색이 안 먹습니다. 디자인 시스템에 실제로 있는 토큰만 쓰세요(숫자 폰트는 var(--text-data-xl|lg|md|sm)).`);
+    }
+  }
   // 디자인시스템 시그니처(섹션 헤더/히어로/타이포 토큰) 준수 검사
   const isTokenSystem = content.includes("--text-heading-1") || content.includes("--text-data");
   if (isTokenSystem) {

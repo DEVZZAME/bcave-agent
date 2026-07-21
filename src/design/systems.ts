@@ -12,8 +12,10 @@ export interface DesignSystem {
   guide: string; // 사용법(토큰형/컴포넌트형) + 배치 규칙
 }
 
-// 모든 시스템에 덧붙는 안전 보정(넘침·한글 줄바꿈). canvas 의 height 는 건드리지 않는다.
-export const DS_SAFETY = `*{box-sizing:border-box}body{word-break:keep-all;overflow-wrap:break-word}img{max-width:100%}`;
+// 모든 시스템에 덧붙는 안전 보정(넘침·한글 줄바꿈) + 모델이 자주 지어내는 없는 토큰 별칭.
+// (--text-data-1/2/3 은 실제로 없어 KPI 숫자 폰트가 무효화되던 반복 버그 → 실제 토큰으로 매핑)
+export const DS_SAFETY = `*{box-sizing:border-box}body{word-break:keep-all;overflow-wrap:break-word}img{max-width:100%}
+:root{--text-data-1:var(--text-data-lg);--text-data-2:var(--text-data-md);--text-data-3:var(--text-data-sm)}`;
 
 // 표준 셸(GNB topbar + 컨테이너) — 토큰형(axis/atelier)의 쇼케이스에 정의된 공통 크롬.
 // 토큰 CSS 엔 없어서 여기서 클래스로 제공한다(모든 페이지가 같은 GNB/구조 → 일관된 느낌).
