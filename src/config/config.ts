@@ -17,6 +17,11 @@ export interface BcaveConfig {
   modelHeavy: string; // UI·서비스 개발·유지보수 등 무거운 작업
   modelLight: string; // 간단한 질문·연산 등 가벼운 작업
 
+  // ── 품질 강화: 검증→자동수정 루프 (약한 모델을 컴파일러/테스트로 끌어올림) ──
+  autoVerify: boolean; // 코드 수정 후 build/typecheck 를 자동 실행해 실패 시 모델이 스스로 고치게 함
+  verifyCmds: string[]; // 검증 명령 직접 지정(비면 package.json 스크립트에서 자동 감지)
+  maxVerifyRounds: number; // 자동 검증-수정 반복 최대 횟수
+
   // ── 레거시/폴백: 직접 OpenAI 키 사용 ──
   apiKey: string;
   baseUrl: string;
@@ -35,6 +40,10 @@ const DEFAULT_CONFIG: BcaveConfig = {
   autoRoute: false,
   modelHeavy: "gpt-5.4-mini",
   modelLight: "gpt-5.4-mini",
+  // 품질 강화 기본 on: 코드 수정 후 자동 검증(감지된 build/typecheck)로 스스로 오류를 고침.
+  autoVerify: true,
+  verifyCmds: [],
+  maxVerifyRounds: 2,
   apiKey: "",
   baseUrl: "https://api.openai.com/v1",
 };

@@ -95,6 +95,7 @@ function cycleMode(): void {
 const COMMANDS = [
   { name: "/resume", desc: "이전 세션 다시 열기" },
   { name: "/model", desc: "모델 선택 (auto 용도별 라우팅 · heavy/light <id> · <id> 고정)" },
+  { name: "/verify", desc: "코드 수정 후 자동 검증-수정 루프 on/off" },
   { name: "/usage", desc: "사용량/한도 확인" },
   { name: "/login", desc: "사내 계정 로그인" },
   { name: "/logout", desc: "로그아웃" },
@@ -862,6 +863,19 @@ async function handleSlashCommand(text: string): Promise<boolean> {
     return true;
   }
 
+  if (trimmed === "/verify" || trimmed.startsWith("/verify ")) {
+    const arg = trimmed.slice(7).trim().toLowerCase();
+    if (arg === "on" || arg === "off") {
+      saveConfig({ autoVerify: arg === "on" });
+      config = loadConfig();
+      rebuildCM();
+      console.log(chalk.green(`  ✓ 자동 검증-수정 ${arg === "on" ? "ON" : "OFF"}`) + chalk.dim("  (코드 수정 후 build/typecheck 자동 실행·자가수정)"));
+    } else {
+      console.log("  " + chalk.dim(`자동 검증-수정: ${config.autoVerify ? "ON" : "OFF"}  ·  /verify on|off 로 전환`));
+    }
+    return true;
+  }
+
   if (trimmed === "/mode") { cycleMode(); return true; }
 
   // /resume — 이전 세션 다시 열기
@@ -907,6 +921,14 @@ async function processAgentEvents(gen: AsyncGenerator<AgentEvent>): Promise<void
           // 승인 여부와 무관하게 "무엇을 하는 중"을 표시(yolo 모드 포함)
           console.log("  " + chalk.cyan("⚡") + " " + toolStatus(event.name, event.args));
           break;
+
+        case "verify": {
+          // 검증→자동수정 루프 진행 표시
+          if (event.status === "run") console.log("  " + chalk.cyan("🔧") + " " + chalk.dim(`자동 검증: ${event.cmd}`));
+          else if (event.status === "pass") console.log("  " + chalk.green("✓") + " " + chalk.dim("검증 통과"));
+          else console.log("  " + chalk.yellow("⚠") + " " + chalk.dim(`검증 실패 → 자동 수정 시도: ${event.cmd}`));
+          break;
+        }
 
         case "tool_call": {
           const req = event.request;

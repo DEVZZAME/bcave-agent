@@ -1,12 +1,51 @@
 import OpenAI from "openai";
+import { spawnSync } from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
 import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
 import { createOpenAIClient, chat } from "../openai/client.js";
 import { executeTool, getToolCategory } from "./tools.js";
 import { PermissionManager, type PermissionCategory } from "./permissions.js";
 import { saveConfig, type BcaveConfig } from "../config/config.js";
-import { pickModel } from "./router.js";
+import { pickModel, classifyTask } from "./router.js";
 import { designChoiceForRequest, systemsMenu } from "../design/systems.js";
 import { hubRefresh } from "../auth/hub.js";
+
+const CODE_EXT = /\.(ts|tsx|js|jsx|mjs|cjs|vue|svelte|py|go|rs|java|rb|php|cs|kt|swift|scss|sass|less|css|json|astro)$/i;
+
+/** 이 저장소의 검증(빌드/타입체크) 명령을 감지 — package.json 스크립트 우선, 없으면 tsconfig 로 tsc. */
+function detectVerifyCommands(cwd: string, override: string[]): string[] {
+  if (override && override.length) return override;
+  try {
+    const pkgPath = path.join(cwd, "package.json");
+    if (fs.existsSync(pkgPath)) {
+      const scripts = (JSON.parse(fs.readFileSync(pkgPath, "utf8")).scripts || {}) as Record<string, string>;
+      // 빠르고 부작용 적은 순: 타입체크 → 빌드 → 린트 (테스트는 느리거나 대화형일 수 있어 자동 실행 제외)
+      for (const name of ["typecheck", "type-check", "tsc", "build", "lint"]) {
+        if (scripts[name]) return [`npm run ${name} --silent`];
+      }
+    }
+    if (fs.existsSync(path.join(cwd, "tsconfig.json"))) return ["npx --no-install tsc --noEmit"];
+  } catch { /* 감지 실패 → 검증 없음 */ }
+  return [];
+}
+
+/** 검증 명령들을 실행해 처음 실패한 것의 {cmd, output} 반환. 모두 통과면 null. */
+function runVerify(cmds: string[], cwd: string): { cmd: string; output: string } | null {
+  for (const cmd of cmds) {
+    let r;
+    try {
+      r = spawnSync(cmd, { cwd, shell: true, encoding: "utf8", timeout: 180_000, maxBuffer: 8 * 1024 * 1024 });
+    } catch { continue; }
+    if (r.status !== 0) {
+      const raw = `${r.stdout || ""}\n${r.stderr || ""}`.trim();
+      // 오류는 보통 끝부분에 몰려 있으므로 뒤에서 자른다.
+      const output = raw.length > 5000 ? "…\n" + raw.slice(-5000) : raw;
+      return { cmd, output: output || `exit code ${r.status}` };
+    }
+  }
+  return null;
+}
 
 export interface ToolCallRequest {
   id: string;
@@ -21,6 +60,7 @@ export type AgentEvent =
   | { type: "tool_call"; request: ToolCallRequest }
   | { type: "tool_result"; name: string; result: string }
   | { type: "model"; model: string; tier: "heavy" | "light" | "manual" }
+  | { type: "verify"; status: "run" | "pass" | "fail"; cmd: string; detail?: string }
   | { type: "done" }
   | { type: "error"; message: string };
 
@@ -183,6 +223,15 @@ COMPOSITION DISCIPLINE (match the design system exactly — these are the most c
           `]`,
       });
     }
+    // B) 계획 먼저: 실질적 개발 작업(UI 단일 파일 제외)은 큰 걸 한 번에 쏟지 말고 쪼개서 구현
+    //    → 작고 명확한 단계는 약한 모델이 가장 안정적으로 처리하는 지점.
+    if (!choice.isUi && classifyTask(userMessage) === "heavy") {
+      this.messages.push({
+        role: "system",
+        content:
+          "[실질적인 개발/구현 작업이다. 바로 코드를 쏟지 말고 먼저 짧은 계획을 세워라: (1) 목표 1~2줄 (2) 만들거나 수정할 파일 목록 (3) 순서 있는 구현 체크리스트. 그다음 한 번에 한 조각씩 구현하고, 각 조각을 마치면 빌드/타입체크로 정확성을 확인하라. 애매하면 가정을 한 줄로 명시하고 진행. 거대한 덩어리를 한 번에 만들지 말 것 — 작은 단위가 품질을 높인다.]",
+      });
+    }
     this.messages.push({ role: "user", content: userMessage });
 
     // 용도별 모델 라우팅: 이 턴 전체에 사용할 모델을 메시지 성격으로 결정
@@ -192,6 +241,11 @@ COMPOSITION DISCIPLINE (match the design system exactly — these are the most c
     // 같은 텍스트가 연속으로 출력되는 중복 방지 (모델이 도구 호출 전후로
     // 동일 인사/질문을 반복하는 경우 화면에 두 번 찍히던 문제).
     let lastText = "";
+
+    // A) 검증→자동수정 루프 상태: 코드가 바뀌면 검증 명령을 돌려 실패 시 모델이 스스로 고치게 한다.
+    const verifyCmds = this.config.autoVerify ? detectVerifyCommands(this.cwd, this.config.verifyCmds) : [];
+    let codeTouched = false;
+    let verifyRounds = 0;
 
     try {
       while (true) {
@@ -216,6 +270,26 @@ COMPOSITION DISCIPLINE (match the design system exactly — these are the most c
         }
 
         if (!message.tool_calls || message.tool_calls.length === 0) {
+          // A) 완료 직전 자동 검증: 코드가 바뀌었고 검증 명령이 있으면 실행, 실패하면 로그를 되먹여 계속 고친다.
+          if (verifyCmds.length && codeTouched && verifyRounds < this.config.maxVerifyRounds && !signal?.aborted) {
+            yield { type: "verify", status: "run", cmd: verifyCmds.join(" && ") };
+            const fail = runVerify(verifyCmds, this.cwd);
+            if (fail) {
+              verifyRounds++;
+              codeTouched = false; // 다음 라운드에서 다시 수정하면 재검증
+              this.messages.push({ role: "assistant", content: message.content ?? "" });
+              this.messages.push({
+                role: "user",
+                content:
+                  `[자동 검증 실패] \`${fail.cmd}\` 가 오류로 끝났습니다. 아래 로그의 원인을 찾아 파일을 수정하세요. ` +
+                  `완료하면 자연스럽게 마무리만 하면 됩니다(검증은 자동으로 다시 실행됩니다).\n\n${fail.output}`,
+              });
+              yield { type: "verify", status: "fail", cmd: fail.cmd, detail: fail.output };
+              lastText = "";
+              continue;
+            }
+            yield { type: "verify", status: "pass", cmd: verifyCmds.join(" && ") };
+          }
           this.messages.push({ role: "assistant", content: message.content ?? "" });
           yield { type: "done" };
           return;
@@ -263,6 +337,8 @@ COMPOSITION DISCIPLINE (match the design system exactly — these are the most c
           }
 
           const result = await executeTool(name, args, this.cwd);
+          // 코드 파일이 바뀌면 완료 시 자동 검증 대상으로 표시(HTML 단일 산출물은 reviewHtml 이 따로 담당).
+          if (name === "write_file" && typeof args.path === "string" && CODE_EXT.test(args.path)) codeTouched = true;
           this.messages.push({
             role: "tool",
             tool_call_id: toolCall.id,
