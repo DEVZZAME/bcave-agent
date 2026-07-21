@@ -5,8 +5,7 @@ import { exec } from "node:child_process";
 import { glob } from "glob";
 import XLSX from "xlsx";
 import { CHARTJS_SOURCE } from "../assets/chartjs.js";
-import { buildDashboard, readWorkbook, readRows, profileColumns, TABULAR_EXT } from "../dashboard/engine.js";
-import { TEMPLATE1_FULL_CSS, TEMPLATE2_FULL_CSS, DASH_TEMPLATES, normalizeTemplate } from "../dashboard/catalog.js";
+import { readWorkbook } from "../dashboard/engine.js";
 import { findDirection, rotateDirection, renderDirection, directionMenu } from "../design/directions.js";
 import type { PermissionCategory } from "./permissions.js";
 
@@ -116,39 +115,6 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       },
     },
   },
-  {
-    type: "function",
-    function: {
-      name: "dashboard_design_system",
-      description:
-        "Return the company dashboard design-system component catalog: ready-to-use HTML snippets for every component, the palette, layout rules, and the CSS/data/Chart.js placeholders. There are TWO templates — pick with the `template` arg: 'template1' (모던/modern — Toss-style, ds-* classes) or 'template2' (클래식/classic — document report, rp-* classes). If a data file path is given, also returns that file's columns and types. Call this FIRST whenever you build or edit a dashboard by hand, then compose the HTML yourself using ONLY that template's components — tailored to the request (e.g. charts only, table only) and varied each time.",
-      parameters: {
-        type: "object",
-        properties: {
-          template: { type: "string", description: "'template1'/'모던'/'modern' (default) or 'template2'/'클래식'/'classic'." },
-          path: { type: "string", description: "Optional data file path — returns its columns/types to guide aggregation." },
-        },
-        required: [],
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "create_dashboard",
-      description:
-        "Generate a single-file HTML dashboard (standard full template) from a tabular data file (Excel/CSV/TSV/TXT/HTML table) using the company design system. Auto-analyzes columns and builds KPIs, charts, a ranking, and a searchable table — no manual HTML. Pick the design with `template`: 'template1' (모던) or 'template2' (클래식/report). Use this for a quick standard dashboard; for a custom layout compose by hand via dashboard_design_system instead. For a non-tabular source (PDF), read_file → extract to CSV → then call this.",
-      parameters: {
-        type: "object",
-        properties: {
-          path: { type: "string", description: "Path to the data file (xlsx/xls/ods/csv/tsv/txt/html)" },
-          template: { type: "string", description: "'template1'/'모던' (default) or 'template2'/'클래식'." },
-          output: { type: "string", description: "Optional output .html path. Default: <datafile>-dashboard.html next to the source." },
-        },
-        required: ["path"],
-      },
-    },
-  },
 ];
 
 const CATEGORY_MAP: Record<string, PermissionCategory> = {
@@ -156,8 +122,6 @@ const CATEGORY_MAP: Record<string, PermissionCategory> = {
   list_files: "file_read",
   search_files: "file_read",
   write_file: "file_write",
-  create_dashboard: "file_write",
-  dashboard_design_system: "file_read",
   frontend_design: "file_read",
   shell_exec: "shell_exec",
 };
@@ -279,14 +243,6 @@ function resolvePlaceholders(content: string, cwd: string): string {
     const [rawPath, sheet] = String(spec).split("#");
     return spreadsheetToJSON(path.resolve(cwd, rawPath.trim()), sheet?.trim());
   });
-  // 디자인시스템 CSS → 인라인 (LLM 이 카탈로그로 조립할 때 사용, 토큰 0)
-  // {{BCAVE_DS2}} 를 먼저 치환(부분일치 방지)
-  if (content.includes("{{BCAVE_DS2}}")) {
-    content = content.split("{{BCAVE_DS2}}").join(TEMPLATE2_FULL_CSS);
-  }
-  if (content.includes("{{BCAVE_DS}}")) {
-    content = content.split("{{BCAVE_DS}}").join(TEMPLATE1_FULL_CSS);
-  }
   // Chart.js 자리표시자·CDN <script> → 인라인 소스(+기본값). 완전한 단일 파일·오프라인 가능.
   if (content.includes("{{BCAVE_CHARTJS}}")) {
     content = content.split("{{BCAVE_CHARTJS}}").join(CHARTJS_SOURCE + CHARTJS_DEFAULTS);
@@ -468,63 +424,6 @@ export async function executeTool(
           `- 상태 처리: hover/focus/active/disabled + loading/empty/error.\n\n` +
           `## 다른 디렉션이 필요하면 style 인자로 다시 호출\n${directionMenu()}\n` +
           `(사용자가 특정 스타일을 말하면 그걸로. 여러 화면을 만들 땐 화면마다 다른 디렉션을 써서 획일화를 피하세요.)`
-        );
-      }
-      case "dashboard_design_system": {
-        const tid = normalizeTemplate(args.template as string | undefined);
-        let dataNote = "";
-        const p = args.path as string | undefined;
-        if (p) {
-          const filePath = path.resolve(cwd, p);
-          if (fs.existsSync(filePath) && TABULAR_EXT.has(path.extname(filePath).toLowerCase())) {
-            try {
-              const { rows, sheet } = readRows(filePath);
-              const sample = rows.slice(0, 80);
-              const lines = profileColumns(rows).map((c) => {
-                let ex = "";
-                if (c.kind === "categorical" || c.kind === "binary") {
-                  ex = " · 예: " + [...new Set(sample.map((r) => r[c.name]).filter((v) => v != null && v !== "").map(String))].slice(0, 6).join(", ");
-                }
-                return `- ${c.name} [${c.kind}] 고유값 ${c.cardinality}${ex}`;
-              });
-              dataNote =
-                `\n\n## 이 데이터 (${rows.length.toLocaleString("ko-KR")}행 · 시트 "${sheet}")\n` +
-                `데이터 주입 자리표시자: {{BCAVE_DATA:${filePath}#${sheet}}}\n` +
-                lines.join("\n");
-            } catch { /* 프로파일 실패는 무시하고 가이드만 반환 */ }
-          } else {
-            dataNote = `\n\n(참고: '${p}' 는 표 형식이 아니거나 없음. 비정형 소스면 read_file 로 읽어 데이터를 CSV 로 저장한 뒤 그 경로로 다시 호출.)`;
-          }
-        }
-        return `[선택된 템플릿: ${DASH_TEMPLATES[tid].label}]\n\n` + DASH_TEMPLATES[tid].guide + dataNote;
-      }
-      case "create_dashboard": {
-        const filePath = path.resolve(cwd, args.path as string);
-        if (!fs.existsSync(filePath)) return `데이터 파일을 찾을 수 없습니다: ${args.path}`;
-        const ext = path.extname(filePath).toLowerCase();
-        if (!TABULAR_EXT.has(ext)) {
-          return `create_dashboard 는 표 형식(엑셀/CSV/TSV/TXT/HTML)만 지원합니다. '${ext}' 는 read_file 로 데이터를 읽어 CSV 로 저장한 뒤 그 CSV 로 다시 시도하세요.`;
-        }
-        const tid = normalizeTemplate(args.template as string | undefined);
-        let html: string, rowCount: number, sheet: string;
-        try {
-          ({ html, rowCount, sheet } = buildDashboard(filePath, tid));
-        } catch (e) {
-          return `대시보드 생성 실패: ${(e as Error).message}`;
-        }
-        if (!rowCount) return `데이터가 비어 있습니다: ${args.path}`;
-        const base = path.basename(filePath, ext);
-        const outPath = args.output
-          ? path.resolve(cwd, args.output as string)
-          : path.join(path.dirname(filePath), `${base}-dashboard.html`);
-        const resolved = resolvePlaceholders(html, cwd);
-        fs.mkdirSync(path.dirname(outPath), { recursive: true });
-        fs.writeFileSync(outPath, resolved, "utf-8");
-        const issues = reviewHtml(resolved, outPath);
-        const kb = Math.round(fs.statSync(outPath).size / 1024);
-        return (
-          `대시보드 생성 완료: ${outPath} (${kb}KB · ${rowCount.toLocaleString("ko-KR")}행 · 시트 "${sheet}" · ${tid === "template2" ? "클래식" : "모던"} 디자인시스템)` +
-          (issues.length ? `\n⚠ 검토 경고: ${issues.join("; ")}` : " · 검토 통과")
         );
       }
       case "list_files": {

@@ -18,8 +18,8 @@ describe("Tools", () => {
     fs.rmSync(testDir, { recursive: true, force: true });
   });
 
-  it("has 8 tool definitions", () => {
-    expect(TOOL_DEFINITIONS).toHaveLength(8);
+  it("has 6 tool definitions", () => {
+    expect(TOOL_DEFINITIONS).toHaveLength(6);
   });
 
   it("exposes frontend_design as a file_read tool", () => {
@@ -27,14 +27,10 @@ describe("Tools", () => {
     expect(getToolCategory("frontend_design")).toBe("file_read");
   });
 
-  it("exposes create_dashboard as a file_write tool", () => {
-    expect(TOOL_DEFINITIONS.map((t) => t.function.name)).toContain("create_dashboard");
-    expect(getToolCategory("create_dashboard")).toBe("file_write");
-  });
-
-  it("exposes dashboard_design_system as a file_read tool", () => {
-    expect(TOOL_DEFINITIONS.map((t) => t.function.name)).toContain("dashboard_design_system");
-    expect(getToolCategory("dashboard_design_system")).toBe("file_read");
+  it("does NOT expose the built-in design-system tools in chat (only via /dashboard)", () => {
+    const names = TOOL_DEFINITIONS.map((t) => t.function.name);
+    expect(names).not.toContain("create_dashboard");
+    expect(names).not.toContain("dashboard_design_system");
   });
 
   describe("getToolCategory", () => {

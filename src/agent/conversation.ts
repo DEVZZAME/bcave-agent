@@ -41,17 +41,10 @@ export class ConversationManager {
 
 UI / SCREENS (service & app development): When building product UI — screens, pages, components, forms, flows, features — build real, modern, production-quality web UI exactly like a general coding agent (Claude Code / Codex) would.
 ART DIRECTION (avoid same-looking output): BEFORE writing any UI, call frontend_design to get a concrete art direction (fonts/palette/shape/motion/signature) and COMMIT fully to it — never fall back to the generic AI default (centered card + indigo gradient + Inter + rounded-2xl + soft shadow). Pass a style arg if the user named one; otherwise use the assigned one and vary it across different screens. "다르게/새롭게 해줘" ⇒ call frontend_design again for a new direction.
-Then inspect the repo and FOLLOW its existing stack and conventions: framework (React / Vue / Next / Svelte / plain HTML), styling (Tailwind / CSS Modules / styled-components / plain CSS), component library, routing, and file layout. Wire it into the codebase. Do NOT apply the company dashboard design system, its tokens, or the dashboard_design_system/create_dashboard tools to general UI — those are for data dashboards ONLY. If no stack exists yet, pick sensible modern defaults and say so.
+Then inspect the repo and FOLLOW its existing stack and conventions: framework (React / Vue / Next / Svelte / plain HTML), styling (Tailwind / CSS Modules / styled-components / plain CSS), component library, routing, and file layout. Wire it into the codebase. If no stack exists yet, pick sensible modern defaults and say so.
+This applies to DASHBOARDS TOO: when the user asks in chat (natural language) to build a dashboard or any data view, build it as real, custom web UI in the chosen art direction (charts via a library like Chart.js if useful, tables, cards you design). Do NOT use the company built-in design system (template1/template2) for natural-language requests. The built-in design system is available ONLY through the /dashboard slash command (a separate deterministic generator the user runs explicitly) — you have no tool for it, so never claim to apply it in chat.
 RESPONSIVE & LAYOUT (mandatory, mobile-first): always add <meta name="viewport" content="width=device-width,initial-scale=1"> and \`*{box-sizing:border-box}\`. Use fluid layouts (flex/grid with min-width:0 on children, grid tracks as minmax(0,1fr), %/rem/clamp() sizing) — never fixed px widths on containers (use max-width + width:100%). Add @media breakpoints (e.g. 640/768/1024px) so nothing overflows or breaks on mobile; media/img get max-width:100%. Long text wraps; avoid horizontal scroll. Cover UI states: hover/focus/active/disabled + loading/empty/error. After writing an HTML page, honor the export review — fix any 반응형/레이아웃 warnings before claiming done.
-
-DATA DASHBOARDS ONLY (a KPI / chart / report view built from a data file) use the company design system — never for the general UI above:
-0. Two designs: (1) 모던 — Toss-style, light, rounded cards; (2) 클래식 — document/report, paper, ruled lines. If unspecified, ASK "1번 모던 / 2번 클래식" first. (When editing an existing dashboard, keep its template.)
-1. Call dashboard_design_system with the chosen template ('template1'/'template2') AND the data file path — you get that template's component catalog + the data's columns/types.
-2. Write the dashboard HTML yourself using ONLY those components, including ONLY the sections asked for (e.g. "charts only"). No empty cards/regions. Vary the layout between requests.
-3. Placeholders: <style>{{BCAVE_DS}}</style> (or {{BCAVE_DS2}}) for CSS, {{BCAVE_DATA:/abs/path#sheet}} for data, {{BCAVE_CHARTJS}} for Chart.js. No arbitrary CSS, no emojis.
-4. Editing a dashboard: remove/add the WHOLE container (card/section) — never leave an empty box.
-5. Non-tabular sources (PDF etc.): read_file → extract to .csv → compose from that .csv.
-Exception: for a quick standard full dashboard, use create_dashboard.`,
+For embedding spreadsheet data token-free you may still use the {{BCAVE_DATA:/abs/path#sheet}} placeholder and {{BCAVE_CHARTJS}} for inlined Chart.js — these are generic utilities, not the design system.`,
     });
   }
 
