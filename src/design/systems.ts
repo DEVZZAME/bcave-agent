@@ -25,9 +25,17 @@ const AXIS_SHELL = `.topbar{position:sticky;top:0;z-index:10;background:rgba(255
 .topbar nav a:hover{background:var(--gray-100);color:var(--color-text-primary)}
 .topbar nav a.on{background:var(--color-primary-subtle);color:var(--color-primary)}
 .wrap{max-width:1040px;margin:0 auto;padding:var(--space-8) var(--space-6) var(--space-16)}
-.page-head{padding:var(--space-2) 0 var(--space-8)}
-.page-head h1{font:var(--text-display-2);letter-spacing:var(--letter-spacing-heading);margin:0}
-.page-head p{color:var(--color-text-secondary);margin:var(--space-2) 0 0}`;
+.hero{padding:var(--space-12) 0 var(--space-10)}
+.hero .eyebrow{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:var(--color-primary);background:var(--color-primary-subtle);padding:5px 12px;border-radius:var(--radius-full)}
+.hero h1{font:var(--text-display-1);letter-spacing:var(--letter-spacing-heading);margin:var(--space-5) 0 0}
+.hero h1 em{color:var(--color-primary);font-style:normal}
+.hero p{color:var(--color-text-secondary);margin-top:var(--space-4);max-width:620px}
+.sec-head{margin:var(--section-gap) 0 var(--space-6);position:relative;padding-bottom:var(--space-3)}
+.sec-head::after{content:"";position:absolute;left:0;bottom:0;width:100%;height:1px;background:var(--color-border)}
+.sec-head::before{content:"";position:absolute;left:0;bottom:-4px;width:2px;height:9px;background:var(--color-primary)}
+.sec-head .kicker{font-size:12px;font-weight:700;color:var(--color-primary);letter-spacing:.08em;text-transform:uppercase}
+.sec-head h2{font:var(--text-heading-1);letter-spacing:var(--letter-spacing-heading);margin-top:2px}
+.sec-head p{color:var(--color-text-secondary);font-size:14px;margin-top:var(--space-2)}`;
 const ATELIER_SHELL = `.topbar{position:sticky;top:0;z-index:10;background:rgba(19,17,16,.88);backdrop-filter:blur(12px);border-bottom:1px solid var(--color-border)}
 .topbar-inner{max-width:1020px;margin:0 auto;padding:0 var(--space-6);height:60px;display:flex;align-items:center;gap:var(--space-4)}
 .logo{font-family:var(--font-family-display);font-weight:600;font-size:17px;letter-spacing:.16em;color:var(--color-text-primary);display:flex;align-items:center;gap:8px}
@@ -36,10 +44,23 @@ const ATELIER_SHELL = `.topbar{position:sticky;top:0;z-index:10;background:rgba(
 .topbar nav a:hover{color:var(--color-text-primary)}
 .topbar nav a.on{color:var(--color-primary)}
 .wrap{max-width:1020px;margin:0 auto;padding:var(--space-10) var(--space-6) var(--space-20)}
+.overline{font-size:11px;font-weight:600;letter-spacing:.14em;color:var(--gold-500);text-transform:uppercase;display:block}
+.hero{padding:var(--space-12) 0 var(--space-10)}
+.hero .overline{margin-bottom:var(--space-5)}
+.hero h1{font:var(--text-display-1);margin:0}
+.hero h1 em{color:var(--color-primary);font-style:normal}
+.hero p{color:var(--color-text-secondary);margin-top:var(--space-4);max-width:640px}
+.sec-head{margin:var(--section-gap) 0 var(--space-8)}
+.sec-head .overline{margin-bottom:var(--space-2)}
+.sec-head h2{font:var(--text-heading-1);margin:0}
+.sec-head p{color:var(--color-text-secondary);font-size:13.5px;margin-top:var(--space-3)}
+.sec-head .hairline{margin-top:var(--space-5);height:1px;background:var(--color-border);position:relative}
+.sec-head .hairline::before{content:"";position:absolute;left:0;top:0;width:64px;height:1px;background:var(--gold-600)}
+.sec-head .hairline::after{content:"";position:absolute;left:0;top:3px;width:32px;height:1px;background:var(--gold-700)}
 .page-head{padding:var(--space-2) 0 var(--space-10)}
 .page-head h1{font:var(--text-display-2);margin:0}
 .page-head p{color:var(--color-text-secondary);margin:var(--space-3) 0 0}`;
-const SHELL_NOTE = "\n표준 셸(모든 페이지 공통 — 빼거나 새로 만들지 말 것): <body> 안에 GNB <div class=\"topbar\"><div class=\"topbar-inner\"><div class=\"logo\">제품/서비스명</div><nav><a href=\"#\">메뉴1</a><a href=\"#\">메뉴2</a>…</nav></div></div> 다음에 <main class=\"wrap\"><div class=\"page-head\"><h1>제목</h1><p>부제</p></div> …내용… </main>. GNB·.wrap·.page-head 는 이 시스템 모든 화면의 고정 크롬이다.";
+const SHELL_NOTE = "\n표준 셸(모든 페이지 공통 — 빼거나 새로 만들지 말 것): <body> 안에 GNB <div class=\"topbar\"><div class=\"topbar-inner\"><div class=\"logo\">제품/서비스명</div><nav><a href=\"#\">메뉴1</a><a href=\"#\">메뉴2</a>…</nav></div></div> 다음에 <main class=\"wrap\"><div class=\"page-head\"><h1>제목</h1><p>부제</p></div> …내용… </main>. GNB·.wrap·.page-head 는 이 시스템 모든 화면의 고정 크롬이다.\n섹션 헤더 규칙(디자인 시스템 시그니처 — 반드시 지킬 것): 각 주요 섹션은 <div class=\"sec-head\"> 로 시작한다. 그 안에 (1)영문 오버라인(예: OVERVIEW / PRINCIPLES / TRENDS / DETAILS — 대문자 짧은 영단어) (2)국문 제목 h2 (3)그 아래 얇은 구분선. 구분선·틱은 CSS가 자동으로 그린다(AXIS는 sec-head 자체가, ATELIER는 <div class=\"hairline\"></div> 를 마지막에 넣어야 함 — 각 가이드 마크업 참고). 페이지 최상단(page-head 대신 더 강조하고 싶으면)에는 히어로 <div class=\"hero\"> 를 둘 수 있다: 오버라인/뱃지 + 큰 제목(강조 단어는 <em>) + 설명 한 줄. 콘텐츠 배치는 매번 달라도, 이 오버라인+제목+구분선 헤더 패턴은 모든 섹션에서 동일하게 유지한다.";
 
 const AXIS_GUIDE = `AXIS — 밝은 코발트 · 웹 플랫폼/대시보드 (모던 프로페셔널). 컴포넌트 클래스가 없는 "토큰형" — 아래 CSS 변수로 컴포넌트를 직접 만든다.
 - 색: 배경 var(--color-bg) · 표면 var(--color-surface) · 보더 var(--color-border) · 텍스트 var(--color-text-primary|secondary|tertiary) · 강조 var(--color-primary)(코발트) · 증감 var(--color-increase)녹/var(--color-decrease)적 · 상태 success/danger/warning(+ -subtle 배경)
@@ -48,7 +69,9 @@ const AXIS_GUIDE = `AXIS — 밝은 코발트 · 웹 플랫폼/대시보드 (모
 - 차트: var(--chart-1..8), 그리드 var(--chart-grid), 축 var(--chart-axis)
 - 대시보드는 <html data-density="compact"> 로 밀도↑(패딩·행높이·지표크기 자동 축소)
 - body{font-family:var(--font-family-base);background:var(--color-bg);color:var(--color-text-primary)}. Pretendard <link> 필요.
-- 예) 카드: <div style="background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-lg);padding:var(--card-padding);box-shadow:var(--shadow-1)">…</div>  · KPI값: <div style="font:var(--text-data-lg);letter-spacing:var(--letter-spacing-data);font-feature-settings:var(--font-feature-data)">1,240</div>`;
+- 예) 카드: <div style="background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-lg);padding:var(--card-padding);box-shadow:var(--shadow-1)">…</div>  · KPI값: <div style="font:var(--text-data-lg);letter-spacing:var(--letter-spacing-data);font-feature-settings:var(--font-feature-data)">1,240</div>
+- 히어로(최상단): <div class="hero"><span class="eyebrow">짧은 라벨</span><h1>핵심 메시지<br><em>강조 줄</em></h1><p>한 줄 설명</p></div>  (eyebrow=코발트 알약 뱃지, em=코발트 강조)
+- 섹션 헤더(모든 섹션 필수): <section><div class="sec-head"><div class="kicker">OVERVIEW</div><h2>국문 제목</h2></div> …내용… </section>  ← kicker=영문 대문자 오버라인, 구분선·코발트 틱은 sec-head 가 자동으로 그림(별도 태그 불필요)`;
 
 const ATELIER_GUIDE = `ATELIER — 다크 에디토리얼 · 에스프레소+골드 · 세리프 제목 (고급/차분). 컴포넌트 클래스 없는 "토큰형".
 - 색: 배경 var(--color-bg)(짙은 에스프레소) · 표면 var(--color-surface)/raised var(--color-surface-raised) · 골드 헤어라인 var(--color-hairline)(시그니처) · 텍스트 var(--color-text-primary|secondary|tertiary) · 브랜드/강조 var(--color-primary)(골드) · 증감 mint/coral
@@ -57,7 +80,9 @@ const ATELIER_GUIDE = `ATELIER — 다크 에디토리얼 · 에스프레소+골
 - 형태: 라운드 최소 var(--radius-sm=2px|md=4px). 다크라 그림자 대신 표면 밝기(surface/raised)로 높이 표현. 골드 1px 헤어라인·넉넉한 여백(var(--section-gap))
 - 차트 var(--chart-1..8)(다크 대비). Noto Serif KR + Pretendard <link> 필요.
 - body{background:var(--color-bg);color:var(--color-text-primary);font-family:var(--font-family-base)}
-- 예) 표면 카드: <div style="background:var(--color-surface);border-top:1px solid var(--color-hairline);padding:var(--card-padding)">…</div>  · 제목: <h2 style="font:var(--text-heading-1)">…</h2>`;
+- 예) 표면 카드: <div style="background:var(--color-surface);border-top:1px solid var(--color-hairline);padding:var(--card-padding)">…</div>
+- 히어로(최상단): <div class="hero"><span class="overline">짧은 라벨</span><h1>핵심 메시지<br><em>강조 줄</em></h1><p>한 줄 설명</p></div>  (overline=골드 대문자, em=골드 강조)
+- 섹션 헤더(모든 섹션 필수): <div class="sec-head"><span class="overline">PRINCIPLES</span><h2>국문 제목</h2><div class="hairline"></div></div> …내용…  ← overline=영문 대문자 골드, 마지막 <div class="hairline"></div> 가 시그니처 골드 이중 구분선을 그림(반드시 넣을 것)`;
 
 const TOSS_GUIDE = `TOSS — 밝은 배경·둥근 카드·파란 강조 (토스풍 모던). "컴포넌트형" — .ds-* 클래스를 조립. body 에 class="ds-body". 컨테이너 .ds-wrap(max 1080), 2열 .ds-two-col.
 - 섹션 제목 .ds-section-title · 카드 .ds-card(+.ds-card-head/.ds-card-title/.ds-card-desc)
