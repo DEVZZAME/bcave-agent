@@ -346,6 +346,13 @@ function reviewHtml(content: string, filePath: string): string[] {
     if (/window\.__DATA/.test(content) && /labels\s*:\s*\[\s*['"]Q1['"]/i.test(content)) {
       issues.push("차트가 실데이터 대신 하드코딩된 가짜 수열(['Q1','Q2'…])을 씁니다. window.__DATA 를 집계(group-by/합계 등)해 labels·data 를 만드세요.");
     }
+    // 고정 높이 차트 박스 + 2단 grid + align-items:start → 좌(차트)·우(카드) 아래끝 어긋남
+    const twoColGrid = /grid-template-columns\s*:\s*[^;{}]*(?:fr|minmax)[^;{}]*(?:fr|minmax)/i.test(content);
+    const topAligned = /align-items\s*:\s*(?:start|flex-start)/i.test(content);
+    const fixedChartBox = /position\s*:\s*relative[^{}]*height\s*:\s*\d{2,3}px|height\s*:\s*\d{2,3}px[^{}]*position\s*:\s*relative/i.test(content);
+    if (/<canvas/i.test(content) && twoColGrid && topAligned && fixedChartBox) {
+      issues.push("레이아웃: 고정 높이 차트 박스가 옆 카드/리스트와 같은 grid 행에 있는데 align-items:start 라 두 열의 아래끝이 어긋나고 빈 공간이 생깁니다. grid 에 align-items:stretch 를 주고, 차트 래퍼는 height:100%;min-height:280px(canvas 가 채움, maintainAspectRatio:false), 옆 열도 height:100% 로 높이를 맞추세요(맞추기 어려우면 세로로 쌓으세요).");
+    }
   }
 
   // 3) 인라인 스크립트 문법 검사 (벤더 Chart.js·거대 데이터 스크립트 제외)
