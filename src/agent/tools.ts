@@ -20,7 +20,10 @@ function readWorkbook(filePath: string): XLSX.WorkBook {
 const CHARTJS_DEFAULTS =
   ";try{if(window.Chart){var _d=Chart.defaults;if(_d.datasets&&_d.datasets.bar){_d.datasets.bar.maxBarThickness=52;_d.datasets.bar.categoryPercentage=0.72;_d.datasets.bar.barPercentage=0.9;}_d.font.family=\"Pretendard,-apple-system,BlinkMacSystemFont,sans-serif\";}}catch(e){}" +
   // 안전한 전역 esc (모델이 직접 만든 esc 의 따옴표 키 버그 방지용 폴백)
-  ";try{if(!window.esc){window.esc=function(v){return String(v==null?'':v).replace(/[&<>\"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',\"'\":'&#39;'}[c];});};}}catch(e){}";
+  ";try{if(!window.esc){window.esc=function(v){return String(v==null?'':v).replace(/[&<>\"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',\"'\":'&#39;'}[c];});};}}catch(e){}" +
+  // CSS 변수 자동 해석: canvas 는 var(--x) 를 못 읽어 색이 검정으로 폴백됨.
+  // 차트 data/options 안의 'var(--chart-1)' 같은 문자열을 실제 계산값으로 치환하는 전역 플러그인.
+  ";try{if(window.Chart){var __cssv=function(n){try{return getComputedStyle(document.documentElement).getPropertyValue(n).trim();}catch(e){return '';}};var __rs=function(s){return s.replace(/var\\((--[\\w-]+)\\)/g,function(m,n){return __cssv(n)||m;});};var __walk=function(o,d){if(!o||typeof o!=='object'||d>6)return;if(Array.isArray(o)){for(var i=0;i<o.length;i++){var a=o[i];if(typeof a==='string'){if(a.indexOf('var(--')>=0)o[i]=__rs(a);}else __walk(a,d+1);}return;}for(var k in o){if(!Object.prototype.hasOwnProperty.call(o,k))continue;var v=o[k];if(typeof v==='string'){if(v.indexOf('var(--')>=0)o[k]=__rs(v);}else __walk(v,d+1);}};var __fix=function(c){try{__walk(c.config.data,0);__walk(c.config.options,0);}catch(e){}};Chart.register({id:'__cssvars',beforeInit:__fix,beforeUpdate:__fix});}}catch(e){}";
 const CHARTJS_INLINE = `<script>${CHARTJS_SOURCE}${CHARTJS_DEFAULTS}</script>`;
 
 export interface ToolDefinition {
@@ -358,6 +361,12 @@ function reviewHtml(content: string, filePath: string): string[] {
       if (/new Chart|\{\{BCAVE_CHARTJS\}\}|chart\.umd/i.test(content) && !/maintainAspectRatio\s*:\s*false/i.test(content)) {
         issues.push("차트 권장: Chart 옵션에 maintainAspectRatio:false 가 없습니다. 없으면 차트가 컨테이너 폭의 2:1 비율로 커집니다. 고정 높이 컨테이너 + maintainAspectRatio:false 조합을 쓰세요.");
       }
+    }
+    // 차트 색이 CSS 변수로만 지정됨 → canvas 는 var() 를 못 읽어 검정 단색으로 폴백(자동 플러그인이 보정하지만 경고로 알림)
+    const scripts = content.match(/<script\b[^>]*>[\s\S]*?<\/script>/gi) || [];
+    const userJs = scripts.filter((s) => s.length < 20000).join("\n"); // 인라인 라이브러리(대용량) 제외
+    if (/backgroundColor|borderColor/.test(userJs) && /var\(--/.test(userJs)) {
+      issues.push("차트 색상: Chart.js 설정에 var(--chart-1) 같은 CSS 변수를 그대로 넣었습니다. canvas 는 var() 를 못 읽어 색이 검정으로 나옵니다. getComputedStyle(document.documentElement).getPropertyValue('--chart-1').trim() 로 실제 값을 뽑아 팔레트 배열을 만들고, 도넛/파이는 backgroundColor 에 세그먼트 수만큼의 색 배열을 넣으세요.");
     }
     // 라이브러리 코드가 <script src="…"> 의 src 에 통째로 들어간 경우(그러면 로드 실패 → 차트 안 뜸)
     if (/<script\b[^>]*\bsrc=["'][^"']{300,}/i.test(content)) {
