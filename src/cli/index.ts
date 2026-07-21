@@ -329,7 +329,7 @@ function toolResultLine(name: string, result: string): string | null {
     }
     if (/^File written but NOT complete:/.test(r)) {
       const attempt = r.match(/수정 시도 (\d+)/)?.[1];
-      return chalk.yellow("    ⚠ 검토 실패") + chalk.dim(` · 재작성 필요${attempt ? ` (${attempt}차)` : ""}`);
+      return chalk.yellow("    ↻ 자동 교정 중") + chalk.dim(` · ${attempt ? `${attempt}차 검토에서 ` : ""}재작성 필요`);
     }
     if (/⚠/.test(r)) {
       const detail = r.split("\n").slice(1).join(" ").replace(/\s+/g, " ").trim().slice(0, 90);

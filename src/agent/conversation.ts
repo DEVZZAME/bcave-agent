@@ -304,6 +304,7 @@ COMPOSITION DISCIPLINE:
           designRules(selected) +
           `\n\nwrite_file을 정확히 한 번 호출하고 design_system: "${selected}", path, body, app_script 필드를 사용한다. ` +
           "body에는 <body> 내부 마크업만, app_script에는 데이터 자리표시자 할당과 JS만 넣는다. content·코드펜스·완성 HTML·<style>·<script>를 넣지 말고 template.html도 직접 읽지 않는다. " +
+          "write_file 호출 직전에 body의 모든 class 이름을 RULES/UI 제공 클래스와 대조하고, row·container·wrapper처럼 익숙하지만 제공되지 않은 클래스를 발명하지 않는다. BCAVE의 가로 정렬은 row가 아니라 row-flex를 사용한다. " +
           "동일 축에는 동일 단위만 사용하고 고객 수 단위는 '명'이다. 완료 전 write_file 결과가 반드시 검토 통과여야 하며 실패/경고를 성공으로 간주하지 않는다. 완료 응답은 파일명과 검증 통과만 간결히 쓴다.",
       });
     }
