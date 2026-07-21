@@ -10,7 +10,7 @@ import { executeTool, getToolCategory } from "./tools.js";
 import { PermissionManager, type PermissionCategory } from "./permissions.js";
 import { saveConfig, type BcaveConfig } from "../config/config.js";
 import { pickModel, classifyTask } from "./router.js";
-import { isAppBuild } from "./request-classification.js";
+import { classifyUiSurface, isAppBuild } from "./request-classification.js";
 import { designRules, designSystemDir, designSystemNames, hasDesignSystem, isUiArtifactRequest } from "../design-system/runtime.js";
 import { hubRefresh } from "../auth/hub.js";
 
@@ -157,6 +157,7 @@ export class ConversationManager {
   private pendingApprovals: Map<string, { resolve: (approved: boolean) => void }> = new Map();
   private pendingDesignChoice = false;
   private selectedDesignSystem = "";
+  private applicationActive = false;
 
   constructor(config: BcaveConfig, permissions: PermissionManager, cwd: string) {
     this.config = config;
@@ -199,10 +200,13 @@ COMPOSITION DISCIPLINE:
       const message = history[i];
       if (message.role !== "system" || typeof message.content !== "string") continue;
       const active = message.content.match(/\[ACTIVE_DESIGN_SYSTEM:([a-z0-9_-]+)\]/i)?.[1]?.toLowerCase();
-      if (active && hasDesignSystem(active)) {
+      if (!this.selectedDesignSystem && active && hasDesignSystem(active)) {
         this.selectedDesignSystem = active;
-        break;
       }
+      if (/\[APPLICATION_CONTEXT\]/.test(message.content) || /\[이 요청은 정적 목업이 아니라 실제로 동작하는 서비스\/애플리케이션이다/.test(message.content)) {
+        this.applicationActive = true;
+      }
+      if (this.selectedDesignSystem && this.applicationActive) break;
     }
   }
 
@@ -296,6 +300,7 @@ COMPOSITION DISCIPLINE:
   async *run(userMessage: string, signal?: AbortSignal): AsyncGenerator<AgentEvent> {
     // 실제 백엔드가 있는 애플리케이션/서비스 요청 → 단일 정적 HTML 플로우가 아니라 진짜 프로젝트로 만든다.
     const appBuild = isAppBuild(userMessage);
+    if (appBuild) this.applicationActive = true;
     const systems = designSystemNames();
     const withoutPaths = userMessage.replace(/\S*[\\/]\S*/g, " ").toLowerCase();
     let requestedSystem = systems.find((name) => new RegExp(`\\b${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(withoutPaths)) || "";
@@ -306,14 +311,15 @@ COMPOSITION DISCIPLINE:
       requestedSystem = withoutPaths.trim().startsWith("1") ? "bcave" : "axis";
       if (!systems.includes(requestedSystem)) requestedSystem = "";
     }
-    const directUiRequest = !appBuild && isUiArtifactRequest(userMessage);
+    const applicationUiRequest = appBuild || (this.applicationActive && isUiArtifactRequest(userMessage));
+    const directUiRequest = !applicationUiRequest && isUiArtifactRequest(userMessage);
     // 디자인 선택을 기다리던 중 포트·서버·파일 등 다른 요청이 들어오면 더 이상 가로채지 않는다.
     if (this.pendingDesignChoice && !pendingChoiceAnswer && !directUiRequest) {
       this.pendingDesignChoice = false;
     }
     const uiRequest = directUiRequest || Boolean(pendingChoiceAnswer);
     // 서비스와 UI 산출물 모두 설정된 시스템을 기본 적용한다. 명시한 BCAVE/AXIS가 항상 우선한다.
-    if (!requestedSystem && (appBuild || uiRequest) && hasDesignSystem(this.config.designSystem)) {
+    if (!requestedSystem && (applicationUiRequest || uiRequest) && hasDesignSystem(this.config.designSystem)) {
       requestedSystem = this.config.designSystem;
     }
     if (uiRequest && !requestedSystem) {
@@ -329,12 +335,18 @@ COMPOSITION DISCIPLINE:
       this.selectedDesignSystem = requestedSystem;
       this.pendingDesignChoice = false;
     }
-    if (appBuild && hasDesignSystem(this.selectedDesignSystem)) {
+    if (applicationUiRequest && hasDesignSystem(this.selectedDesignSystem)) {
       const selected = this.selectedDesignSystem;
       const assets = designSystemDir(selected);
+      const surface = classifyUiSurface(userMessage);
+      const surfaceRules = surface === "auth"
+        ? "[화면 성격: 인증]\n- 로그인/회원가입은 집중형 인증 레이아웃으로 만든다: 브랜드, 짧은 제목/안내, 필드, 주 CTA 1개, 필요한 보조 링크만 둔다.\n- topbar/sidebar, KPI, 차트, 통계 카드, 대시보드 grid, 마케팅 hero를 넣지 않는다. 폼을 여러 카드로 쪼개지 않는다."
+        : surface === "dashboard"
+          ? "[화면 성격: 대시보드]\n- 지표의 우선순위, KPI, 차트, 비교·추세, 필터를 중심으로 정보 밀도와 빠른 스캔을 최적화한다.\n" + designRules(selected)
+          : "[화면 성격: 업무 플랫폼]\n- 실제 작업 흐름을 중심으로 앱 셸, 페이지 제목, 주요 액션, 검색·필터·탭, 목록/테이블, 상세/폼, 상태와 피드백을 구성한다.\n- 사용자가 분석 화면을 요구하지 않았다면 KPI·차트·통계 카드·대시보드 grid를 넣지 않는다. 마케팅 hero를 넣지 않고 모든 섹션을 카드로 감싸지 않는다.";
       this.setDesignSystemContext(selected,
           `[이 서비스의 모든 웹 UI는 ${selected.toUpperCase()} 디자인 시스템을 반드시 사용한다. 대시보드에만 적용되는 선택 규칙이 아니다.]\n` +
-          designRules(selected) +
+          `[UI_SURFACE:${surface}]\n${surfaceRules}\n` +
           `\n\n[애플리케이션 적용 계약 — 위 RULES의 정적 HTML 출력 계약보다 이 항목이 우선한다.]\n` +
           `- 대상: 로그인, 목록, 상세, 폼, 설정, 관리자 페이지 등 모든 화면과 공통 컴포넌트. API/DB 같은 비시각 코드만 제외한다.\n` +
           `- 현재 프레임워크(React/Next/Vue 등), 라우팅, 컴포넌트 구조를 유지한다. TSX/JSX와 일반 코드 파일은 write_file의 content 필드로 작성한다. body/app_script/design_system 필드는 단일 HTML 산출물에만 쓴다.\n` +
@@ -360,7 +372,7 @@ COMPOSITION DISCIPLINE:
       this.messages.push({
         role: "system",
         content:
-          "[이 요청은 정적 목업이 아니라 실제로 동작하는 서비스/애플리케이션이다. 정적 HTML 파일 몇 개로 끝내고 '서비스'라고 부르지 말 것. 다음을 갖춘 진짜 프로젝트를 만든다:\n" +
+          "[APPLICATION_CONTEXT]\n[이 요청은 정적 목업이 아니라 실제로 동작하는 서비스/애플리케이션이다. 정적 HTML 파일 몇 개로 끝내고 '서비스'라고 부르지 말 것. 다음을 갖춘 진짜 프로젝트를 만든다:\n" +
           "- 백엔드(필수): 실제 서버와 HTTP API 엔드포인트 + 데이터 영속화(DB). 별도 인프라가 필요없도록 기본은 SQLite/파일 DB. 데이터·사용자·상태·CRUD·인증·결제는 반드시 서버에서 처리 — 프론트 하드코딩·localStorage·가짜 배열 목업으로 대체 금지.\n" +
           "- 프론트엔드: 그 API 를 fetch 로 호출해 실제 데이터를 렌더(정적 더미데이터 금지).\n" +
           "- 구조: 여러 파일로 된 실행 가능한 프로젝트 — package.json(의존성), 폴더 구조, 서버·라우트·데이터 계층 분리, 라우팅.\n" +

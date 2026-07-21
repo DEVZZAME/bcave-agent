@@ -7,3 +7,16 @@ export function isAppBuild(message?: string): boolean {
   if (/(목업|mockup|mock-up|시안|정적|static|한 ?페이지|단일 ?html|프로토타입 ?화면)/i.test(message)) return false;
   return APP_NOUN.test(message);
 }
+
+export type UiSurface = "auth" | "dashboard" | "platform";
+
+/** 같은 디자인 시스템 안에서도 화면의 제품 성격에 맞는 구성을 선택한다. */
+export function classifyUiSurface(message?: string): UiSurface {
+  if (message && /(로그인|회원가입|가입 ?화면|비밀번호|인증 ?화면|sign[ -]?in|sign[ -]?up|forgot password|reset password|\bauth\b)/i.test(message)) {
+    return "auth";
+  }
+  if (message && /(대시보드|dashboard|kpi|지표|차트|분석|analytics|리포트|보고서|통계)/i.test(message)) {
+    return "dashboard";
+  }
+  return "platform";
+}

@@ -108,4 +108,51 @@ describe("ConversationManager", () => {
     expect(designContexts[0]).toContain("이전 시스템 참조를 제거");
     await axisRun.return(undefined);
   });
+
+  it("uses an auth composition instead of dashboard patterns for a login screen", async () => {
+    const cm = new ConversationManager(config, new PermissionManager("yolo"), process.cwd());
+    const run = cm.run("AXIS 디자인시스템으로 로그인 화면이 있는 서비스를 만들어줘");
+    await run.next();
+
+    const context = cm.getHistory().find((message) =>
+      message.role === "system" && String(message.content).includes("[ACTIVE_DESIGN_SYSTEM:axis]"),
+    );
+    expect(String(context?.content)).toContain("[UI_SURFACE:auth]");
+    expect(String(context?.content)).toContain("topbar/sidebar, KPI, 차트");
+    expect(String(context?.content)).not.toContain("KPI 4개 중 최상위");
+    await run.return(undefined);
+  });
+
+  it("uses workflow composition for a normal platform service", async () => {
+    const cm = new ConversationManager(config, new PermissionManager("yolo"), process.cwd());
+    const run = cm.run("브랜드 권리 관리 플랫폼 서비스를 구현해줘");
+    await run.next();
+
+    const context = cm.getHistory().find((message) =>
+      message.role === "system" && String(message.content).includes("[ACTIVE_DESIGN_SYSTEM:bcave]"),
+    );
+    expect(String(context?.content)).toContain("[UI_SURFACE:platform]");
+    expect(String(context?.content)).toContain("실제 작업 흐름");
+    expect(String(context?.content)).toContain("KPI·차트·통계 카드·대시보드 grid를 넣지 않는다");
+    expect(String(context?.content)).not.toContain("KPI 4개 중 최상위");
+    await run.return(undefined);
+  });
+
+  it("keeps a dashboard request inside an active application while using dashboard composition", async () => {
+    const cm = new ConversationManager(config, new PermissionManager("yolo"), process.cwd());
+    const app = cm.run("브랜드 관리 서비스를 구현해줘");
+    await app.next();
+    await app.return(undefined);
+
+    const dashboard = cm.run("매출 분석 대시보드 화면을 추가해줘");
+    expect((await dashboard.next()).value).toMatchObject({ type: "model" });
+
+    const context = cm.getHistory().find((message) =>
+      message.role === "system" && String(message.content).includes("[ACTIVE_DESIGN_SYSTEM:bcave]"),
+    );
+    expect(String(context?.content)).toContain("[UI_SURFACE:dashboard]");
+    expect(String(context?.content)).toContain("KPI 4개 중 최상위");
+    expect(String(context?.content)).not.toContain("디자인 시스템 강제 파이프라인");
+    await dashboard.return(undefined);
+  });
 });
