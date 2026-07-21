@@ -256,6 +256,17 @@ export function rotateSystem(): DesignSystem {
   return DESIGN_SYSTEMS[id];
 }
 
+// ── 앱/서비스(실제 백엔드 포함) 요청 감지 — 단일 정적 HTML 이 아니라 진짜 프로젝트로 만들어야 하는 신호 ──
+const APP_NOUN =
+  /(서비스|애플리케이션|어플리케이션|어플\b|백엔드|backend|서버\b|\bserver\b|\bapi\b|엔드포인트|endpoint|데이터베이스|\bdb\b|회원가입|회원 ?관리|로그인 ?기능|인증 ?기능|\bauth\b|계정|crud|결제|주문 ?관리|재고|예약 ?(시스템|기능|서비스)|게시판|커뮤니티|채팅|메시지|실시간|알림|쇼핑몰|풀스택|full[- ]?stack|\bsaas\b|웹\s?서비스|웹앱|웹\s?애플리케이션|백오피스|관리자 ?(시스템|페이지|도구))/i;
+/** 정적 목업이 아니라 실제 백엔드/데이터가 있는 애플리케이션을 만들라는 요청인가. */
+export function isAppBuild(message?: string): boolean {
+  if (!message) return false;
+  // "목업/시안/정적/한 페이지"처럼 명시적으로 정적 산출물을 원하면 앱으로 보지 않는다.
+  if (/(목업|mockup|mock-up|시안|정적|static|한 ?페이지|단일 ?html|프로토타입 ?화면)/i.test(message)) return false;
+  return APP_NOUN.test(message);
+}
+
 // ── 요청 분류: UI/대시보드/HTML 제작인가, 시스템이 정해졌나, 되물어야 하나 ──
 const UI_NOUN =
   /(대시보드|dashboard|화면|페이지|컴포넌트|랜딩|폼\b|모달|사이트|웹\s?ui|\bui\b|앱\s?화면|리포트|보고서|html|랜딩페이지|landing|screen|page|component|스크린)/i;

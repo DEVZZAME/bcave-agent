@@ -8,7 +8,7 @@ import { executeTool, getToolCategory } from "./tools.js";
 import { PermissionManager, type PermissionCategory } from "./permissions.js";
 import { saveConfig, type BcaveConfig } from "../config/config.js";
 import { pickModel, classifyTask } from "./router.js";
-import { designChoiceForRequest, systemsMenu } from "../design/systems.js";
+import { designChoiceForRequest, systemsMenu, isAppBuild } from "../design/systems.js";
 import { hubRefresh } from "../auth/hub.js";
 
 const CODE_EXT = /\.(ts|tsx|js|jsx|mjs|cjs|vue|svelte|py|go|rs|java|rb|php|cs|kt|swift|scss|sass|less|css|json|astro)$/i;
@@ -83,6 +83,7 @@ export class ConversationManager {
       role: "system",
       content: `You are BCave, a CLI coding agent. You help users by reading/writing files and executing shell commands on their local machine. Working directory: ${cwd}. Always use the provided tools to interact with the filesystem and shell. Respond in the same language the user uses.
 
+ARTIFACT vs APPLICATION (decide first): if the user asks for a real SERVICE / APPLICATION (backend, API, data, accounts/auth, CRUD, persistence, a running app), build an ACTUAL multi-file, runnable project WITH A REAL BACKEND — never deliver a few static HTML files and call it a service, and never fake data/auth in the frontend. The SINGLE-self-contained-HTML rule and the design-system single-file flow below apply ONLY to standalone artifacts (a dashboard, a report, a landing/one-off page, a mockup). For applications, ignore the single-HTML rule and follow the per-request application note.
 UI / SCREENS (service & app development): When building product UI — screens, pages, components, forms, flows, features — build real, modern, production-quality web UI exactly like a general coding agent (Claude Code / Codex) would.
 DESIGN SYSTEM CHOICE (mandatory): the company has 6 design systems (1 AXIS, 2 ATELIER, 3 PRISM, 4 PUNCH, 5 MOCHI, 6 MEOK). Whenever the user asks to build a screen / dashboard / any HTML page and has NOT picked one, do NOT build yet — ASK which of the 6 to use (they answer by number or name). A system note lists them. Once chosen (or if the user names it, or says "알아서" → you pick), you get a system note "[이번 화면/대시보드/HTML 은 "…" 디자인 시스템으로 …]" with that system's rules/tokens/components — build with ONLY those (no arbitrary colors/fonts/values). Inline its CSS via <style>{{BCAVE_DS:<id>}}</style> (token-free). Keep the chosen system across follow-up edits; only re-ask for a brand-new page.
 CONSISTENT IDENTITY, VARIED CONTENT: the same design system must ALWAYS look like the same product — identity (color, typography, spacing, components, and the standard shell/GNB) is FIXED and consistent across every output. Completely different-feeling results from the same system are a BUG. What varies each time is only the CONTENT arrangement (which sections/cards, their order, emphasis, grid) to fit the request and data — never the identity or the standard chrome. INCLUDE the essential elements the system defines (GNB/topbar, page header, container) and whatever a real screen must have; do not drop them. Each major section MUST start with the system's section-header signature — an English overline (short uppercase word) above the Korean title, with a divider line beneath — and the page may open with a hero (overline/badge + large headline + one-line description). This header format is part of the fixed identity: keep it on every section; only the content inside varies. Use the exact classes/markup from the injected design-system guide.
@@ -192,10 +193,26 @@ COMPOSITION DISCIPLINE (match the design system exactly — these are the most c
     // 화면/대시보드/HTML 제작 요청 처리 — 4개 디자인 시스템 중 선택:
     //  - 시스템이 안 정해졌으면 만들지 말고 먼저 "1~4 중 무엇으로?" 되묻는다.
     //  - 정해졌으면 그 시스템의 규칙/컴포넌트로 조립하되, 배치는 매번 다르게(고정 틀 금지).
-    const choice = designChoiceForRequest(userMessage, this.lastSystemId, this.lastWasUi);
+    // 실제 백엔드가 있는 애플리케이션/서비스 요청 → 단일 정적 HTML 플로우가 아니라 진짜 프로젝트로 만든다.
+    const appBuild = isAppBuild(userMessage);
+    const choice = appBuild
+      ? { isUi: false, system: null, needsChoice: false }
+      : designChoiceForRequest(userMessage, this.lastSystemId, this.lastWasUi);
     this.lastWasUi = choice.isUi;
     if (choice.system) this.lastSystemId = choice.system.id;
-    if (choice.isUi && choice.needsChoice) {
+    if (appBuild) {
+      this.messages.push({
+        role: "system",
+        content:
+          "[이 요청은 정적 목업이 아니라 실제로 동작하는 서비스/애플리케이션이다. 정적 HTML 파일 몇 개로 끝내고 '서비스'라고 부르지 말 것. 다음을 갖춘 진짜 프로젝트를 만든다:\n" +
+          "- 백엔드(필수): 실제 서버와 HTTP API 엔드포인트 + 데이터 영속화(DB). 별도 인프라가 필요없도록 기본은 SQLite/파일 DB. 데이터·사용자·상태·CRUD·인증·결제는 반드시 서버에서 처리 — 프론트 하드코딩·localStorage·가짜 배열 목업으로 대체 금지.\n" +
+          "- 프론트엔드: 그 API 를 fetch 로 호출해 실제 데이터를 렌더(정적 더미데이터 금지).\n" +
+          "- 구조: 여러 파일로 된 실행 가능한 프로젝트 — package.json(의존성), 폴더 구조, 서버·라우트·데이터 계층 분리, 라우팅.\n" +
+          "- 실행/검증: 의존성 설치가 되고 build/typecheck 가 통과해야 한다. 실행 방법(예: npm install && npm run dev)과 주요 엔드포인트를 README 로 남긴다. (긴 실행이 필요한 서버 起動은 사용자가 하도록 안내만.)\n" +
+          "- 스택: 저장소에 기존 스택이 있으면 그대로 따르고, 없으면 로컬에서 바로 도는 간단·확실한 기본값을 골라 한 줄로 밝힌다(예: Node.js+Express+SQLite(better-sqlite3), 또는 Next.js 풀스택+SQLite/Prisma). 무거운 외부 인프라(별도 DB 서버·클라우드·도커 필수)는 요구하지 말 것.\n" +
+          "- UI 스타일이 필요하면 디자인 시스템 CSS(<style>{{BCAVE_DS:1}}</style> 등)를 프론트에 참고해도 되지만, 단일 인라인 HTML 규칙은 여기 적용되지 않는다(정상적인 다중 파일 프로젝트로).]",
+      });
+    } else if (choice.isUi && choice.needsChoice) {
       this.messages.push({
         role: "system",
         content:
@@ -223,9 +240,9 @@ COMPOSITION DISCIPLINE (match the design system exactly — these are the most c
           `]`,
       });
     }
-    // B) 계획 먼저: 실질적 개발 작업(UI 단일 파일 제외)은 큰 걸 한 번에 쏟지 말고 쪼개서 구현
+    // B) 계획 먼저: 실질적 개발 작업(앱 빌드 또는 UI 단일 파일 제외의 heavy)은 큰 걸 한 번에 쏟지 말고 쪼개서 구현
     //    → 작고 명확한 단계는 약한 모델이 가장 안정적으로 처리하는 지점.
-    if (!choice.isUi && classifyTask(userMessage) === "heavy") {
+    if (appBuild || (!choice.isUi && classifyTask(userMessage) === "heavy")) {
       this.messages.push({
         role: "system",
         content:
