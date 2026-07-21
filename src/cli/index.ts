@@ -8,7 +8,7 @@ import type { BcaveConfig } from "../config/config.js";
 import { hubLogin, hubLogout, hubListModels, hubUsage, type HubModel } from "../auth/hub.js";
 import { newSessionId, saveSession, listSessions, loadSession } from "../session/store.js";
 import fs from "node:fs";
-import { execSync } from "node:child_process";
+import { execSync, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import nodePath from "node:path";
 
@@ -762,7 +762,7 @@ function checkForUpdate(): boolean {
   }
 }
 
-async function doUpdate(): Promise<void> {
+async function doUpdate(): Promise<boolean> {
   const dir = installDir();
   const run = (cmd: string, timeout: number) => execSync(cmd, { cwd: dir, stdio: "ignore", timeout });
   console.log("");
@@ -774,12 +774,25 @@ async function doUpdate(): Promise<void> {
     run("npm install --silent", 300000);
     console.log("  " + chalk.cyan("▸") + " 빌드…");
     run("npm run build --silent", 180000);
-    console.log("  " + chalk.green("✓ 최신 버전으로 업데이트했습니다.") + chalk.dim("  bcave 를 다시 실행하세요."));
+    console.log("  " + chalk.green("✓ 최신 버전으로 업데이트했습니다."));
+    console.log("");
+    return true;
   } catch (e) {
     console.log("  " + chalk.red("✗ 업데이트 실패: ") + chalk.dim((e as Error).message.split("\n")[0]));
     console.log("  " + chalk.dim("  설치 명령을 다시 실행해 보세요."));
+    console.log("");
+    return false;
   }
+}
+
+/** 업데이트 후 방금 빌드된 CLI 를 새 프로세스로 자동 재실행(현재 프로세스는 옛 코드라 교체 필요). */
+function relaunchUpdated(): never {
+  const entry = nodePath.join(installDir(), "dist", "cli", "index.js");
+  console.log("  " + chalk.cyan("▸") + " bcave 를 다시 시작합니다…");
   console.log("");
+  // stdio 상속으로 대화형 세션을 자식이 그대로 이어받게 함. 업데이트 인자는 제거하고 일반 실행.
+  const res = spawnSync(process.execPath, [entry], { stdio: "inherit" });
+  process.exit(res.status ?? 0);
 }
 
 // ─── Command Handlers ──────────────────────────────────
@@ -1063,8 +1076,9 @@ async function main(): Promise<void> {
 
   // 서브커맨드 처리
   if (subcommand === "update") {
-    await doUpdate();
-    process.exit(0);
+    const ok = await doUpdate();
+    if (ok) relaunchUpdated(); // 성공 시 새로 빌드된 버전으로 자동 재실행
+    process.exit(1);
   }
 
   if (subcommand === "logout") {
