@@ -297,6 +297,43 @@ function toolStatus(name: string, args: Record<string, unknown>): string {
   }
 }
 
+// shell 실패 시 STDERR 첫 의미있는 줄을 뽑는다.
+function shellErrReason(r: string): string {
+  const idx = r.indexOf("STDERR:");
+  const tail = idx >= 0 ? r.slice(idx + 7) : r.replace(/^Exit code \d+\n?/, "");
+  const line = tail
+    .split("\n")
+    .map((s) => s.trim())
+    .find((s) => s && !/^Exit code/.test(s));
+  return line ? (line.length > 90 ? line.slice(0, 90) + "…" : line) : "";
+}
+
+// 도구 실행 결과를 사람이 읽기 좋은 한 줄로. 표시할 게 없으면 null(조용히).
+function toolResultLine(name: string, result: string): string | null {
+  const r = (result || "").trim();
+  const exitM = r.match(/^Exit code (\d+)/);
+  if (exitM) {
+    const reason = shellErrReason(r);
+    return chalk.yellow("    ⚠ 실패") + chalk.dim(` (exit ${exitM[1]})${reason ? " · " + reason : ""}`);
+  }
+  if (/^(Error|Invalid regular expression)/.test(r)) {
+    return chalk.yellow("    ⚠ ") + chalk.dim(r.split("\n")[0].slice(0, 110));
+  }
+  if (/^\[바이너리/.test(r)) return null;
+  if (name === "write_file") {
+    if (/⚠/.test(r)) {
+      const detail = r.split("\n").slice(1).join(" ").replace(/\s+/g, " ").trim().slice(0, 90);
+      return chalk.yellow("    ⚠ 검토 경고") + (detail ? chalk.dim(" · " + detail) : "");
+    }
+    return chalk.dim("    ✓ 저장됨");
+  }
+  if (name === "shell_exec") {
+    const firstOut = r.split("\n").map((s) => s.trim()).find(Boolean);
+    return chalk.dim("    ✓ 완료" + (firstOut ? " · " + (firstOut.length > 80 ? firstOut.slice(0, 80) + "…" : firstOut) : ""));
+  }
+  return null; // read_file/list_files/search_files 성공은 표시하지 않음(⚡ 라인으로 충분)
+}
+
 // ─── 작업 중 스피너 / 입력 차단 / ESC 취소 ───────────────
 let processing = false;
 let aborted = false;
@@ -907,9 +944,14 @@ async function processAgentEvents(gen: AsyncGenerator<AgentEvent>): Promise<void
           console.log("");
           break;
 
+        case "tool_start":
+          // 승인 여부와 무관하게 "무엇을 하는 중"을 표시(yolo 모드 포함)
+          console.log("  " + chalk.cyan("⚡") + " " + toolStatus(event.name, event.args));
+          break;
+
         case "tool_call": {
           const req = event.request;
-          console.log("  " + chalk.cyan("⚡") + " " + toolStatus(req.name, req.args));
+          // ⚡ 라인은 tool_start 에서 이미 표시됨 — 여기선 승인만.
           // 승인 선택 동안은 정상 입력 복원 (방향키 셀렉터 동작)
           exitWorkInput();
           if (mode === "auto-approve") {
@@ -926,11 +968,9 @@ async function processAgentEvents(gen: AsyncGenerator<AgentEvent>): Promise<void
         }
 
         case "tool_result": {
-          // 원문은 표시하지 않고, 실패했을 때만 짧게 알린다.
-          const r = (event.result || "").trim();
-          if (/^(Error|Exit code|Invalid regular expression|\[바이너리)/.test(r)) {
-            console.log("    " + chalk.yellow("⚠ ") + chalk.dim(r.split("\n")[0].slice(0, 110)));
-          }
+          // 진행 상황을 사람이 읽기 좋게: 성공은 "✓ 완료", 실패는 이유까지.
+          const line = toolResultLine(event.name, event.result);
+          if (line) console.log(line);
           break;
         }
 

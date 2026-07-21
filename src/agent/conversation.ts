@@ -17,6 +17,7 @@ export interface ToolCallRequest {
 
 export type AgentEvent =
   | { type: "text"; content: string }
+  | { type: "tool_start"; name: string; args: Record<string, unknown> }
   | { type: "tool_call"; request: ToolCallRequest }
   | { type: "tool_result"; name: string; result: string }
   | { type: "model"; model: string; tier: "heavy" | "light" | "manual" }
@@ -197,6 +198,9 @@ For embedding spreadsheet data token-free you may still use the {{BCAVE_DATA:/ab
           const name = toolCall.function.name;
           const args = JSON.parse(toolCall.function.arguments) as Record<string, unknown>;
           const category = getToolCategory(name);
+
+          // 승인 여부와 무관하게 "무엇을 하는 중"을 먼저 알린다(yolo 모드에서도 진행 표시).
+          yield { type: "tool_start", name, args };
 
           if (this.permissions.needsApproval(category)) {
             const request: ToolCallRequest = { id: toolCall.id, name, args, category };
