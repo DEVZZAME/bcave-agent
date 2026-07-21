@@ -284,39 +284,75 @@ function resolvePlaceholders(content: string, cwd: string): string {
 function reviewHtml(content: string, filePath: string): string[] {
   if (!/\.html?$/i.test(filePath)) return [];
   const issues: string[] = [];
-  // 1) 미해결 자리표시자
+  const isPage = /<body|<html/i.test(content);
+  // 대시보드(디자인시스템/데이터 주입)인지 — 데이터 관련 검토는 대시보드에만 적용(일반 UI 오탐 방지)
+  const isDashboard = /\{\{BCAVE_(DS|DATA|CHARTJS)|window\.__DATA|class=["'][^"']*\b(?:ds-|rp-)/.test(content);
+
+  // 1) 미해결 자리표시자 (항상)
   const ph = content.match(/\{\{[A-Za-z_][^}]*\}\}/g);
   if (ph) issues.push(`치환되지 않은 자리표시자: ${[...new Set(ph)].slice(0, 3).join(", ")}`);
-  // 2) 빈 데이터 배열
-  if (
-    /window\.__DATA\s*=\s*\[\s*\]/.test(content) ||
-    /\b(?:const|let|var)\s+\w*[Dd]ata\w*\s*=\s*\[\s*\]\s*[;,]/.test(content) ||
-    /["']?rows["']?\s*:\s*\[\s*\]/.test(content)
-  ) {
-    issues.push(
-      "데이터 배열이 비어 있습니다(예: window.__DATA=[]). `{{BCAVE_DATA:<데이터파일 절대경로>}}` 로 실제 데이터를 넣고 경로가 정확한지 확인하세요.",
-    );
+
+  // 2) 대시보드 데이터 검토
+  if (isDashboard) {
+    if (
+      /window\.__DATA\s*=\s*\[\s*\]/.test(content) ||
+      /\b(?:const|let|var)\s+\w*[Dd]ata\w*\s*=\s*\[\s*\]\s*[;,]/.test(content) ||
+      /["']?rows["']?\s*:\s*\[\s*\]/.test(content)
+    ) {
+      issues.push(
+        "데이터 배열이 비어 있습니다(예: window.__DATA=[]). `{{BCAVE_DATA:<데이터파일 절대경로>}}` 로 실제 데이터를 넣고 경로가 정확한지 확인하세요.",
+      );
+    }
+    const hasVisual = /<canvas|<tbody|<table/i.test(content);
+    const hasData = /window\.__DATA|[Dd]ata\s*=\s*\[\s*\{/.test(content);
+    if (hasVisual && !hasData) {
+      issues.push("차트/표가 있는데 데이터가 없습니다. `{{BCAVE_DATA:경로}}` 로 데이터를 주입하세요.");
+    }
   }
-  // 3) 차트/표가 있는데 데이터 소스가 전혀 없음
-  const hasVisual = /<canvas|<tbody|<table/i.test(content);
-  const hasData = /window\.__DATA|[Dd]ata\s*=\s*\[\s*\{/.test(content);
-  if (hasVisual && !hasData) {
-    issues.push("차트/표가 있는데 데이터가 없습니다. `{{BCAVE_DATA:경로}}` 로 데이터를 주입하세요.");
-  }
-  // 4) 인라인 스크립트 문법 검사 (벤더 Chart.js·거대 데이터 스크립트 제외)
+
+  // 3) 인라인 스크립트 문법 검사 (벤더 Chart.js·거대 데이터 스크립트 제외)
   const scripts = content.match(/<script>[\s\S]*?<\/script>/g) || [];
   for (const block of scripts) {
     const js = block.slice(8, -9);
     if (js.length > 60000 || js.includes("Chart.js v") || /^\s*window\.__DATA\s*=/.test(js)) continue;
     if (!js.trim()) continue;
     try {
-      // 파싱만 (실행 아님) — 따옴표 키 오타 등 문법 오류를 잡는다.
-      new Function(js);
+      new Function(js); // 파싱만 (실행 아님)
     } catch (e) {
-      issues.push(`스크립트 문법 오류: ${(e as Error).message} (표·차트가 안 나오는 원인)`);
+      issues.push(`스크립트 문법 오류: ${(e as Error).message}`);
       break;
     }
   }
+
+  // 4) 레이아웃·반응형 검토 (완결된 HTML 페이지 — 대시보드/일반 UI 공통)
+  if (isPage) {
+    const styleCss =
+      (content.match(/<style[\s\S]*?<\/style>/gi) || []).join("\n") +
+      " " +
+      (content.match(/style=["'][^"']*["']/g) || []).join(" ");
+    if (!/<meta[^>]+name=["']?viewport\b/i.test(content)) {
+      issues.push('반응형: <meta name="viewport" content="width=device-width,initial-scale=1"> 가 없습니다(모바일에서 데스크톱 폭으로 축소 렌더).');
+    }
+    if (styleCss.length > 40) {
+      if (/(?:^|[^-])(?:width|padding)\s*:/.test(styleCss) && !/box-sizing\s*:\s*border-box/.test(styleCss)) {
+        issues.push("레이아웃: box-sizing 이 없습니다. `*{box-sizing:border-box}` 를 넣으세요(width+padding 이 컨테이너를 넘치게 하는 주원인).");
+      }
+      let big = false;
+      const wRe = /(?:min-)?width\s*:\s*(\d{3,})px/gi;
+      let wm: RegExpExecArray | null;
+      while ((wm = wRe.exec(styleCss))) if (parseInt(wm[1]) >= 700) { big = true; break; }
+      if (big && !/max-width\s*:/.test(styleCss)) {
+        issues.push("반응형: 700px+ 고정 width 인데 max-width 가 없습니다(작은 화면에서 가로 스크롤/깨짐). `max-width` + `width:100%` 로 바꾸세요.");
+      }
+      if (!/@media/.test(styleCss) && !/(%|vw|vh|minmax\(|\dfr|clamp\(|flex|grid)/.test(styleCss)) {
+        issues.push("반응형: @media 브레이크포인트도, 유동 레이아웃(%/vw/flex/grid/minmax/clamp)도 없습니다. 모바일 대응을 추가하세요.");
+      }
+    }
+    if (/<img\b/i.test(content) && !/img[^{}]*\{[^}]*max-width/i.test(styleCss) && !/<img[^>]*style=["'][^"']*max-width/i.test(content)) {
+      issues.push("반응형: <img> 에 max-width:100% 가 없습니다(원본 크기로 컨테이너를 넘칠 수 있음).");
+    }
+  }
+
   return issues;
 }
 
