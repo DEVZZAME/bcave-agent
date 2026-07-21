@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { assembleDesignArtifact, assembleDesignArtifactParts, lintDesignArtifact } from "../runtime.js";
+import { assembleDesignArtifact, assembleDesignArtifactParts, detectDesignSystemFromArtifact, designSystemNames, lintDesignArtifact } from "../runtime.js";
 
 function writeArtifact(source: string): { dir: string; file: string } {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bcave-design-"));
@@ -12,6 +12,10 @@ function writeArtifact(source: string): { dir: string; file: string } {
 }
 
 describe("BCAVE design pipeline", () => {
+  it("discovers both packaged design systems", () => {
+    expect(designSystemNames()).toEqual(expect.arrayContaining(["axis", "bcave"]));
+  });
+
   it("assembles structured body/app fields without code fences", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bcave-design-parts-"));
     const file = path.join(dir, "dashboard.html");
@@ -23,6 +27,24 @@ describe("BCAVE design pipeline", () => {
     );
     expect(html).toContain("BCAVE:ASSET tokens");
     expect(html).not.toContain("```html:body");
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("moves a top-level hero into the page container", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bcave-hero-container-"));
+    const file = path.join(dir, "dashboard.html");
+    const html = assembleDesignArtifactParts(
+      "bcave",
+      '<div class="topbar"></div><section class="hero"><div class="top"><h1>성과</h1><div class="rule"></div><div class="dept">기간</div></div></section><div class="page"><div class="sec-head"><h2>내용</h2></div></div>',
+      "void 0;",
+      file,
+    );
+    const pageAt = html.indexOf('<div class="page">');
+    const heroAt = html.indexOf('<section class="hero">');
+    expect(pageAt).toBeGreaterThan(0);
+    expect(heroAt).toBeGreaterThan(pageAt);
+    fs.writeFileSync(file, html, "utf8");
+    expect(lintDesignArtifact("bcave", file).violations.map((v) => v.rule)).not.toContain("R15-hero-container");
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
@@ -76,6 +98,40 @@ describe("BCAVE design pipeline", () => {
     expect(rules).toEqual(expect.arrayContaining([
       "R6-unknown-class", "R11-donut-limit", "R12-mixed-units", "R13-customer-unit", "R14-hero-structure", "R14-hero-no-kpi",
     ]));
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+describe("AXIS design pipeline", () => {
+  it("assembles AXIS assets, detects the marker, and passes its own lint", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "axis-design-"));
+    const file = path.join(dir, "dashboard.html");
+    const html = assembleDesignArtifactParts(
+      "axis",
+      '<div class="topbar"><div class="topbar-inner"><div class="logo">AXIS</div></div></div><div class="page"><div class="kpi-grid"><div class="kpi"><div class="val num" id="sales"></div></div></div></div>',
+      "document.getElementById('sales').textContent = AXIS.fmt.krw(100);",
+      file,
+    );
+    fs.writeFileSync(file, html, "utf8");
+    expect(html).toContain("AXIS:ASSET tokens");
+    expect(html).toContain("global.AXIS.chart = api");
+    expect(detectDesignSystemFromArtifact(file)).toBe("axis");
+    expect(lintDesignArtifact("axis", file).pass).toBe(true);
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("uses AXIS-specific lint rules", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "axis-design-bad-"));
+    const file = path.join(dir, "dashboard.html");
+    const html = assembleDesignArtifactParts(
+      "axis",
+      '<div class="page" style="color:#ff0000"><div>--control-height-md:</div><canvas id="c"></canvas></div>',
+      "new Chart(document.getElementById('c'), {});",
+      file,
+    );
+    fs.writeFileSync(file, html, "utf8");
+    const rules = lintDesignArtifact("axis", file).violations.map((v) => v.rule);
+    expect(rules).toEqual(expect.arrayContaining(["R2-no-inline-style", "R3-alien-hex", "R5-no-raw-chart", "R11-no-density-override"]));
     fs.rmSync(dir, { recursive: true, force: true });
   });
 });

@@ -81,6 +81,7 @@ describe("Tools", () => {
       const props = write.function.parameters.properties as Record<string, unknown>;
       expect(props).toHaveProperty("body");
       expect(props).toHaveProperty("app_script");
+      expect(props).toHaveProperty("design_system");
       expect(write.function.parameters.required).toEqual(["path"]);
     });
 

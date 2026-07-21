@@ -11,7 +11,7 @@ import { PermissionManager, type PermissionCategory } from "./permissions.js";
 import { saveConfig, type BcaveConfig } from "../config/config.js";
 import { pickModel, classifyTask } from "./router.js";
 import { isAppBuild } from "./request-classification.js";
-import { designRules, hasDesignSystem, isUiArtifactRequest } from "../design-system/runtime.js";
+import { designRules, designSystemNames, hasDesignSystem, isUiArtifactRequest } from "../design-system/runtime.js";
 import { hubRefresh } from "../auth/hub.js";
 
 const CODE_EXT = /\.(ts|tsx|js|jsx|mjs|cjs|vue|svelte|py|go|rs|java|rb|php|cs|kt|swift|scss|sass|less|css|json|astro)$/i;
@@ -155,6 +155,8 @@ export class ConversationManager {
   private cwd: string;
   private messages: ChatCompletionMessageParam[] = [];
   private pendingApprovals: Map<string, { resolve: (approved: boolean) => void }> = new Map();
+  private pendingDesignChoice = false;
+  private selectedDesignSystem = "";
 
   constructor(config: BcaveConfig, permissions: PermissionManager, cwd: string) {
     this.config = config;
@@ -182,19 +184,6 @@ COMPOSITION DISCIPLINE:
 - Use Chart.js for data charts. Do not hand-build bars, donuts, gauges, or sparklines from divs when a real chart is appropriate.
 - Keep text contrast accessible on every surface and use a coherent visual hierarchy across the page.`,
     });
-    if (hasDesignSystem(config.designSystem)) {
-      this.messages.push({
-        role: "system",
-        content:
-          `[활성 디자인 시스템: ${config.designSystem}]\n` + designRules(config.designSystem) +
-          `\n\n대시보드/UI/화면 HTML을 만들 때 출력 계약: write_file을 정확히 한 번 호출하고 path, body, app_script 필드를 사용한다. ` +
-          "body에는 <body> 내부 마크업만, app_script에는 데이터 자리표시자 할당과 JS만 원문 문자열로 넣는다. content 필드와 코드펜스는 사용하지 않는다. 두 블록을 따로 저장하거나 완성 HTML, <style>, <script>, 별도 설명을 넣지 않는다. template.html을 직접 읽거나 조립하지 않는다. " +
-          "CLI가 템플릿·토큰·UI CSS·Chart.js·차트 어댑터·데이터를 조립하고 린트한다. " +
-          "차트는 동일 축에 동일 단위만 사용하고, 도넛은 상위 5개+기타(최대 6조각), 고객 수 단위는 '명'으로 쓴다. " +
-          "히어로를 쓰면 반드시 <section class=\"hero\"><div class=\"top\"><h1>제목</h1><div class=\"rule\"></div><div class=\"dept\">부서 · 기간</div></div></section> 구조만 사용한다. hero-copy/hero-grid 같은 클래스를 발명하거나 히어로 안에 KPI를 넣지 않는다. " +
-          "완료 응답 전 write_file 결과가 반드시 '검토 통과'여야 한다. 실패/경고를 저장 성공으로 간주하지 말고 수정한다. 완료 응답에는 파일명과 검증 통과만 간결히 쓰며 '원하시면/다음 단계' 제안은 넣지 않는다.",
-      });
-    }
   }
 
   /** 저장용 대화 히스토리(시스템 프롬프트 제외 — 복원 시 현재 시스템 프롬프트를 새로 씌운다). */
@@ -283,10 +272,39 @@ COMPOSITION DISCIPLINE:
   async *run(userMessage: string, signal?: AbortSignal): AsyncGenerator<AgentEvent> {
     // 실제 백엔드가 있는 애플리케이션/서비스 요청 → 단일 정적 HTML 플로우가 아니라 진짜 프로젝트로 만든다.
     const appBuild = isAppBuild(userMessage);
-    if (!appBuild && isUiArtifactRequest(userMessage) && hasDesignSystem(this.config.designSystem)) {
+    const systems = designSystemNames();
+    const withoutPaths = userMessage.replace(/\S*[\\/]\S*/g, " ").toLowerCase();
+    let requestedSystem = systems.find((name) => new RegExp(`\\b${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(withoutPaths)) || "";
+    if (!requestedSystem && /비케이브/.test(withoutPaths) && systems.includes("bcave")) requestedSystem = "bcave";
+    if (!requestedSystem && /액시스/.test(withoutPaths) && systems.includes("axis")) requestedSystem = "axis";
+    if (!requestedSystem && this.pendingDesignChoice && /^[12](?:번)?$/.test(withoutPaths.trim())) {
+      requestedSystem = withoutPaths.trim().startsWith("1") ? "bcave" : "axis";
+      if (!systems.includes(requestedSystem)) requestedSystem = "";
+    }
+    const uiRequest = !appBuild && (isUiArtifactRequest(userMessage) || this.pendingDesignChoice);
+    if (uiRequest && !requestedSystem) {
+      this.pendingDesignChoice = true;
+      const q = "이 대시보드/화면에 사용할 디자인 시스템을 선택해 주세요: `1 BCAVE` 또는 `2 AXIS`.";
+      this.messages.push({ role: "user", content: userMessage });
+      this.messages.push({ role: "assistant", content: q });
+      yield { type: "text", content: q };
+      yield { type: "done" };
+      return;
+    }
+    if (requestedSystem) {
+      this.selectedDesignSystem = requestedSystem;
+      this.pendingDesignChoice = false;
+    }
+    if (uiRequest && hasDesignSystem(this.selectedDesignSystem)) {
+      const selected = this.selectedDesignSystem;
       this.messages.push({
         role: "system",
-        content: `[이번 UI 산출물은 ${this.config.designSystem} 디자인 시스템 강제 파이프라인을 사용한다. RULES.md의 클래스와 BCAVE.chart/BCAVE.fmt API만 사용하고 write_file content 출력 계약을 지켜라.]`,
+        content:
+          `[이번 UI 산출물은 ${selected.toUpperCase()} 디자인 시스템 강제 파이프라인을 사용한다.]\n` +
+          designRules(selected) +
+          `\n\nwrite_file을 정확히 한 번 호출하고 design_system: "${selected}", path, body, app_script 필드를 사용한다. ` +
+          "body에는 <body> 내부 마크업만, app_script에는 데이터 자리표시자 할당과 JS만 넣는다. content·코드펜스·완성 HTML·<style>·<script>를 넣지 말고 template.html도 직접 읽지 않는다. " +
+          "동일 축에는 동일 단위만 사용하고 고객 수 단위는 '명'이다. 완료 전 write_file 결과가 반드시 검토 통과여야 하며 실패/경고를 성공으로 간주하지 않는다. 완료 응답은 파일명과 검증 통과만 간결히 쓴다.",
       });
     }
     if (appBuild) {

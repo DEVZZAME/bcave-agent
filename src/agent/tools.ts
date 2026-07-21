@@ -7,7 +7,7 @@ import XLSX from "xlsx";
 import { CHARTJS_SOURCE } from "../assets/chartjs.js";
 import type { PermissionCategory } from "./permissions.js";
 import { loadConfig } from "../config/config.js";
-import { assembleDesignArtifact, assembleDesignArtifactParts, hasDesignSystem, lintDesignArtifact } from "../design-system/runtime.js";
+import { assembleDesignArtifact, assembleDesignArtifactParts, designSystemNames, hasDesignSystem, lintDesignArtifact } from "../design-system/runtime.js";
 
 // 스프레드시트 로드: 텍스트(csv·tsv·txt·html)는 UTF-8 원본으로(raw), 그 외는 버퍼로.
 const _TEXT_EXT = new Set([".csv", ".tsv", ".txt", ".tab", ".html", ".htm"]);
@@ -82,6 +82,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
           content: { type: "string", description: "Regular file content. Do not use for active-design-system HTML dashboards." },
           body: { type: "string", description: "Dashboard <body> inner markup only, without <body>, <style>, or code fences." },
           app_script: { type: "string", description: "Dashboard data injection and application JavaScript only, without <script> or code fences." },
+          design_system: { type: "string", enum: designSystemNames(), description: "Design system for an HTML dashboard. Use the system selected by the user." },
         },
         required: ["path"],
       },
@@ -734,7 +735,11 @@ export async function executeTool(
       case "write_file": {
         const filePath = path.resolve(cwd, args.path as string);
         let source = String(args.content ?? "");
-        const design = loadConfig().designSystem;
+        const requestedDesign = typeof args.design_system === "string" ? args.design_system.toLowerCase() : "";
+        const design = requestedDesign || loadConfig().designSystem;
+        if (requestedDesign && !hasDesignSystem(requestedDesign)) {
+          return `File not written. 알 수 없는 디자인 시스템: ${requestedDesign}`;
+        }
         if (/\.html?$/i.test(filePath) && hasDesignSystem(design)) {
           try {
             const body = typeof args.body === "string" ? args.body : null;

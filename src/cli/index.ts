@@ -11,7 +11,7 @@ import fs from "node:fs";
 import { execSync, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import nodePath from "node:path";
-import { hasDesignSystem, lintDesignArtifact } from "../design-system/runtime.js";
+import { detectDesignSystemFromArtifact, designSystemNames, hasDesignSystem, lintDesignArtifact } from "../design-system/runtime.js";
 
 // ─── CLI Args ──────────────────────────────────────────
 const args = process.argv.slice(2);
@@ -49,7 +49,7 @@ if (args.includes("--help") || args.includes("-h")) {
     logout                             로그아웃
     update                             최신 버전으로 업데이트
     design use bcave                   UI/대시보드 디자인 시스템 활성화
-    design lint <file>                 생성된 HTML 디자인 규칙 검사
+    design lint <file> [--system name] 생성된 HTML 디자인 규칙 검사
 
   ${chalk.bold("Options")}
     --hub-url <url>                    HUB 주소 지정 (예: http://hub.bcave.internal)
@@ -1108,7 +1108,13 @@ async function main(): Promise<void> {
         console.error(chalk.red(`  ✗ 파일을 찾을 수 없습니다: ${target}`));
         process.exit(2);
       }
-      const active = loadConfig().designSystem || "bcave";
+      const systemIdx = args.indexOf("--system");
+      const explicit = systemIdx >= 0 ? String(args[systemIdx + 1] || "").toLowerCase() : "";
+      const active = explicit || detectDesignSystemFromArtifact(target) || loadConfig().designSystem;
+      if (!hasDesignSystem(active)) {
+        console.error(chalk.red(`  ✗ 디자인 시스템을 판별할 수 없습니다. --system ${designSystemNames().join("|")} 중 하나를 지정하세요.`));
+        process.exit(2);
+      }
       const result = lintDesignArtifact(active, target);
       console.log(JSON.stringify(result, null, 2));
       process.exit(result.pass ? 0 : 1);
