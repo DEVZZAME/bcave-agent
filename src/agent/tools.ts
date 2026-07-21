@@ -238,6 +238,11 @@ function resolvePlaceholders(content: string, cwd: string): string {
     const s = DESIGN_SYSTEMS[id] ?? Object.values(DESIGN_SYSTEMS).find((x) => x.key === String(id).toLowerCase());
     return s ? s.css + "\n" + DS_SAFETY : "";
   });
+  // 흔한 실수 교정: <script src="{{BCAVE_CHARTJS}}"></script> (라이브러리를 src 에 넣음) → 인라인 <script>…</script>
+  content = content.replace(
+    /<script\b[^>]*\bsrc=["']\{\{BCAVE_CHARTJS\}\}["'][^>]*>\s*<\/script>/gi,
+    "<script>{{BCAVE_CHARTJS}}</script>",
+  );
   // Chart.js 자리표시자·CDN <script> → 인라인 소스(+기본값). 완전한 단일 파일·오프라인 가능.
   if (content.includes("{{BCAVE_CHARTJS}}")) {
     content = content.split("{{BCAVE_CHARTJS}}").join(CHARTJS_SOURCE + CHARTJS_DEFAULTS);
@@ -353,6 +358,10 @@ function reviewHtml(content: string, filePath: string): string[] {
       if (/new Chart|\{\{BCAVE_CHARTJS\}\}|chart\.umd/i.test(content) && !/maintainAspectRatio\s*:\s*false/i.test(content)) {
         issues.push("차트 권장: Chart 옵션에 maintainAspectRatio:false 가 없습니다. 없으면 차트가 컨테이너 폭의 2:1 비율로 커집니다. 고정 높이 컨테이너 + maintainAspectRatio:false 조합을 쓰세요.");
       }
+    }
+    // 라이브러리 코드가 <script src="…"> 의 src 에 통째로 들어간 경우(그러면 로드 실패 → 차트 안 뜸)
+    if (/<script\b[^>]*\bsrc=["'][^"']{300,}/i.test(content)) {
+      issues.push("차트 오류: <script src=…> 의 src 값이 비정상적으로 깁니다(라이브러리 코드를 src 에 넣음 → 로드 실패로 차트가 안 뜸). Chart.js 는 <script>{{BCAVE_CHARTJS}}</script> 처럼 인라인으로 넣으세요.");
     }
 
     // 결과물에 들어가면 안 되는 "제작 과정·메타·다음 단계" 서술 (스크립트 제외한 표시 텍스트에서)
