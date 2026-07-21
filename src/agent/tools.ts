@@ -301,6 +301,19 @@ function reviewHtml(content: string, filePath: string): string[] {
     if (hasVisual && !hasData) {
       issues.push("차트/표가 있는데 데이터가 없습니다. `{{BCAVE_DATA:경로}}` 로 데이터를 주입하세요.");
     }
+    // 표시 영역(스크립트 제외)에 날 JSON 배열을 통째로 쏟아부은 경우 — 자리표시자를 <td>/본문에 박은 대표적 오류
+    const visibleHtml = content.replace(/<script[\s\S]*?<\/script>/gi, " ");
+    if (/[\[,]\s*\{\s*["'][^"']+["']\s*:\s*["'][^"']*["']\s*,[\s\S]{1500,}?\}\s*\]/.test(visibleHtml) || /<td[^>]*>\s*\[\s*\{[\s\S]{800,}/i.test(visibleHtml)) {
+      issues.push("데이터가 화면에 날(raw) JSON 으로 찍혀 있습니다. {{BCAVE_DATA}} 는 <td>/본문에 넣지 말고 <script>window.__DATA = {{BCAVE_DATA:경로}};</script> 로 변수에 담은 뒤, JS 로 표·차트·KPI 를 window.__DATA 를 순회해 렌더하세요.");
+    }
+    // 가짜 표 헤더(컬럼 1/2/3) — 실제 컬럼명을 쓰지 않은 신호
+    if (/<th[^>]*>\s*컬럼\s*\d/.test(content) || /<th[^>]*>\s*(?:Column|Col)\s*\d/i.test(content)) {
+      issues.push("표 헤더가 '컬럼 1/2/3' 같은 자리표시자입니다. window.__DATA 의 실제 컬럼명을 헤더로 쓰세요.");
+    }
+    // 차트가 window.__DATA 대신 지어낸 하드코딩 수열(Q1..Qn, 임의 정수)을 쓰는 신호
+    if (/window\.__DATA/.test(content) && /labels\s*:\s*\[\s*['"]Q1['"]/i.test(content)) {
+      issues.push("차트가 실데이터 대신 하드코딩된 가짜 수열(['Q1','Q2'…])을 씁니다. window.__DATA 를 집계(group-by/합계 등)해 labels·data 를 만드세요.");
+    }
   }
 
   // 3) 인라인 스크립트 문법 검사 (벤더 Chart.js·거대 데이터 스크립트 제외)
