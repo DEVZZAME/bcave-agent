@@ -223,15 +223,31 @@ const UI_NOUN =
   /(대시보드|dashboard|화면|페이지|컴포넌트|랜딩|폼\b|모달|사이트|웹\s?ui|\bui\b|앱\s?화면|리포트|보고서|카드\s?레이아웃|테이블\s?뷰|메뉴바|네비게이션|히어로|섹션|랜딩페이지|landing|screen|page|component)/i;
 const CHANGE_HINT = /(다르게|새롭게|다른 느낌|다른 스타일|다시 만들|다시 해|바꿔|바꿔봐|바꿔줘|재구성|리디자인|redesign)/;
 
+// 내용/스펙이 있음을 시사하는 단어(무엇을 담을지). 이게 있으면 "어떻게" 명시된 것으로 본다.
+const DETAIL_HINT =
+  /(데이터|파일|\.(xlsx|csv|tsv|xls|json)|매출|판매|고객|지표|kpi|차트|그래프|표\b|테이블|필드|컬럼|기간|월별|일별|주별|브랜드|카테고리|분석|랭킹|순위|비교|추이|현황|성과|리포트|보고서|목록|재고|주문|결제|사용자|회원|트래픽|전환|퍼널|매트릭|대시보드용)/i;
+// "알아서/그냥/아무렇게나" → 되묻지 말고 진행
+const VAGUE_OK = /(알아서|아무|그냥|적당히|맘대로|네가|당신이|추천|골라|자유롭게)/;
+
 /** 이 요청이 UI/대시보드 제작이면 적용할 아트 디렉션을 결정.
- *  명시적 스타일 언급 → 그 디렉션, 아니면 회전(매번 다르게). lastWasUi 로 짧은 후속 수정도 UI 로 인식. */
+ *  - 명시적 스타일 → 그 디렉션 / 아니면 회전(매번 다르게)
+ *  - 스타일도 내용 스펙도 없는 첫 요청 → needsClarify=true (먼저 어떻게 만들지 되묻기) */
 export function directionForRequest(
   message: string,
   lastWasUi: boolean,
-): { direction: Direction | null; isUi: boolean } {
+): { direction: Direction | null; isUi: boolean; needsClarify: boolean } {
   const style = styleFromText(message);
   let isUi = UI_NOUN.test(message) || !!style;
-  if (!isUi && lastWasUi && CHANGE_HINT.test(message)) isUi = true; // 대시보드 만든 직후 "다르게 해줘" 등
-  if (!isUi) return { direction: null, isUi: false };
-  return { direction: style ?? rotateDirection(), isUi: true };
+  // 직전이 UI 였으면 후속 답(다르게/알아서/응 그렇게/진행 등)도 UI 연속으로 인식
+  if (
+    !isUi &&
+    lastWasUi &&
+    (CHANGE_HINT.test(message) || VAGUE_OK.test(message) || DETAIL_HINT.test(message) || /^(응|네|그래|좋아|ok|오케이|그렇게|진행|만들어)/i.test(message.trim()))
+  ) {
+    isUi = true;
+  }
+  if (!isUi) return { direction: null, isUi: false, needsClarify: false };
+  const hasDetail = DETAIL_HINT.test(message) || message.trim().length > 40;
+  const needsClarify = !style && !hasDetail && !VAGUE_OK.test(message) && !lastWasUi;
+  return { direction: style ?? rotateDirection(), isUi: true, needsClarify };
 }

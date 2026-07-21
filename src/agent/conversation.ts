@@ -44,8 +44,10 @@ export class ConversationManager {
 
 UI / SCREENS (service & app development): When building product UI — screens, pages, components, forms, flows, features — build real, modern, production-quality web UI exactly like a general coding agent (Claude Code / Codex) would.
 ART DIRECTION (avoid same-looking output): for every UI/dashboard request you are given a specific art direction as a system note "[이번 UI/대시보드는 아래 아트 디렉션으로 …]". COMMIT fully to that direction's fonts/palette/shape/motion — never fall back to the generic AI default (centered card + gradient + glass/pastel + Inter + rounded-2xl + soft shadow). Each request gets a different direction, so do not reuse the previous look; when the user names a feel (더 심플하게/부드럽게/다크하게 등) the note reflects it — follow it.
+CLARIFY FIRST: if a UI/dashboard request gives no style/feel AND no content spec (e.g. bare "대시보드 만들어줘"/"화면 만들어줘"), do NOT build yet — ask 1-2 short questions first: what feel/style (심플·모던·다크·레트로 …) and what to include (which data/metrics/sections). A system note will flag this. If the user gives any hint, or says "알아서", proceed with a good default. (This overrides the auto art-direction for that first turn.)
 Then inspect the repo and FOLLOW its existing stack and conventions: framework (React / Vue / Next / Svelte / plain HTML), styling (Tailwind / CSS Modules / styled-components / plain CSS), component library, routing, and file layout. Wire it into the codebase. If no stack exists yet, pick sensible modern defaults and say so.
 This applies to DASHBOARDS TOO: when the user asks in chat (natural language) to build a dashboard or any data view, build it as real, custom web UI in the chosen art direction (charts via a library like Chart.js if useful, tables, cards you design). Do NOT use the company built-in design system (template1/template2) for natural-language requests. The built-in design system is available ONLY through the /dashboard slash command (a separate deterministic generator the user runs explicitly) — you have no tool for it, so never claim to apply it in chat.
+DASHBOARD FILE RULES (mandatory): (1) SINGLE self-contained .html file — ALL CSS inside one inline <style> tag in that same file, and JS inline too; do NOT create separate .css/.js files or link external stylesheets (a web-font <link> and an inlined chart library are the only allowed externals). (2) ALWAYS write to a NEW file — pick a filename that does not already exist (e.g. <name>-dashboard.html, and if it exists use <name>-dashboard-2.html, -3 …). NEVER overwrite a previous dashboard, even for a "다르게/더 심플하게" iteration — each dashboard is a fresh file so the user can keep and compare versions.
 DELIVERABLE CONTENT (what goes INSIDE the file): the file must contain ONLY the real product content — title, data, KPIs, charts, insights. NEVER embed meta/process narration in the deliverable: no "…를 바탕으로 다시 구성했습니다", no description of the art direction / mood ("따뜻하고 친근하게" 등), no data-source file path, no "단일 HTML 파일…" notes, no "원하시면 다음 단계로 …" suggestions. Put ALL of that in your CHAT reply only. The art direction changes the VISUAL style (fonts/colors/shape/motion) — it must NOT leak into the copy/wording of titles or text.
 TITLE & HEADER: h1 is a concise, factual report title — a short noun phrase like a real business report heading (e.g. "브랜드 매출·고객 성과 리포트"), with NO trailing sentence/period and NO aesthetic or marketing phrasing. Keep the header compact: optional short eyebrow + short h1 + at most ONE brief subtitle line (period/scope, e.g. "2024-07 ~ 2025-06 · 고객·주문·RFM"). Do not cram sentences or a paragraph into the header. It is a report for the user to present — write it like one.
 RESPONSIVE & LAYOUT (mandatory, mobile-first): always add <meta name="viewport" content="width=device-width,initial-scale=1"> and \`*{box-sizing:border-box}\`. Use fluid layouts (flex/grid with min-width:0 on children, grid tracks as minmax(0,1fr), %/rem/clamp() sizing) — never fixed px widths on containers (use max-width + width:100%). Add @media breakpoints (e.g. 640/768/1024px) so nothing overflows or breaks on mobile; media/img get max-width:100%. Long text wraps; avoid horizontal scroll. Cover UI states: hover/focus/active/disabled + loading/empty/error. After writing an HTML page, honor the export review — fix any 반응형/레이아웃 warnings before claiming done.
@@ -137,11 +139,18 @@ For embedding spreadsheet data token-free you may still use the {{BCAVE_DATA:/ab
   }
 
   async *run(userMessage: string, signal?: AbortSignal): AsyncGenerator<AgentEvent> {
-    // UI/대시보드 제작 요청이면 아트 디렉션을 자동 주입 → 매번 같은 디자인(모델 기본 룩)으로
-    // 회귀하는 것을 방지. 사용자가 느낌/스타일을 말하면 그 방향, 아니면 회전(매번 다르게).
+    // UI/대시보드 제작 요청 처리:
+    //  - 스타일·내용 스펙이 없는 첫 요청이면 만들지 말고 먼저 "어떻게 만들지" 되묻게 한다.
+    //  - 스펙이 있으면 아트 디렉션을 주입해 매번 같은 디자인(모델 기본 룩)으로 회귀하는 것을 방지.
     const dir = directionForRequest(userMessage, this.lastWasUi);
     this.lastWasUi = dir.isUi;
-    if (dir.direction) {
+    if (dir.isUi && dir.needsClarify) {
+      this.messages.push({
+        role: "system",
+        content:
+          "[사용자가 UI/대시보드를 요청했지만 '어떻게' 만들지(스타일/느낌)와 '무엇을' 담을지 지시가 없다. 지금 파일을 만들지 말고, 먼저 짧게 1~2가지만 되물어라: (1) 어떤 느낌/스타일로 할지(예: 심플·모던·다크·레트로 등) (2) 무엇(어떤 데이터·지표·섹션)을 담을지. 사용자가 '알아서'라고 하거나 다음 답이 모호하면 그때는 좋은 기본값으로 바로 진행.]",
+      });
+    } else if (dir.direction) {
       this.messages.push({
         role: "system",
         content:

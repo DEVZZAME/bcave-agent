@@ -307,6 +307,12 @@ function reviewHtml(content: string, filePath: string): string[] {
     if (/<img\b/i.test(content) && !/img[^{}]*\{[^}]*max-width/i.test(styleCss) && !/<img[^>]*style=["'][^"']*max-width/i.test(content)) {
       issues.push("반응형: <img> 에 max-width:100% 가 없습니다(원본 크기로 컨테이너를 넘칠 수 있음).");
     }
+    // 단일 파일: 외부 스타일시트(<link rel=stylesheet>) 금지 — 웹폰트 링크만 허용. CSS 는 인라인 <style> 로.
+    const cssLinks = content.match(/<link\b[^>]*rel=["']?stylesheet[^>]*>/gi) || [];
+    const nonFontCss = cssLinks.filter((l) => !/fonts\.googleapis|fonts\.gstatic|pretendard|\bfont/i.test(l));
+    if (nonFontCss.length) {
+      issues.push("단일 파일 규칙: 외부 CSS(<link rel=\"stylesheet\">)를 쓰지 말고 CSS 를 전부 같은 파일의 인라인 <style> 안에 넣으세요(웹폰트 링크만 예외).");
+    }
 
     // 결과물에 들어가면 안 되는 "제작 과정·메타·다음 단계" 서술 (스크립트 제외한 표시 텍스트에서)
     const visible = content.replace(/<script[\s\S]*?<\/script>/gi, " ").replace(/<style[\s\S]*?<\/style>/gi, " ");
