@@ -105,9 +105,11 @@ describe("ConversationManager", () => {
     const presentationContext = cm.getHistory().find((message) =>
       message.role === "system" && String(message.content).startsWith("[PRESENTATION_CONTEXT]"),
     );
-    expect(String(presentationContext?.content)).toContain("원본 파일 전체를 작업 파일로 복사");
-    expect(String(presentationContext?.content)).toContain("새 슬라이드를 추가하지 않는다");
-    expect(String(presentationContext?.content)).toContain("원본 안내 문구가 모두 교체됐는지 검사");
+    expect(String(presentationContext?.content)).toContain("선택 가능한 레이아웃 템플릿 라이브러리");
+    expect(String(presentationContext?.content)).toContain("같은 원본 슬라이드를 여러 번 복제");
+    expect(String(presentationContext?.content)).toContain("완성본의 페이지 수는 내용에 맞게 정한다");
+    expect(String(presentationContext?.content)).toContain("크기 및 위치를 키우거나 줄이는 것은 허용");
+    expect(String(presentationContext?.content)).toContain("모든 결과 페이지가 원본 템플릿 페이지의 복제본인지");
     await run.return(undefined);
   });
 
