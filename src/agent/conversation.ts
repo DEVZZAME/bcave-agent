@@ -209,6 +209,7 @@ export class ConversationManager {
       content: `You are BCave, a CLI coding agent. Working directory: ${cwd}. Use tools to interact with the filesystem and shell. Respond in the user's language.
 
 ARTIFACT vs APP: Real service/app (backend+API+DB+auth) → multi-file project. Standalone dashboard/report/landing → single self-contained HTML. Never fake data with static arrays.
+DB RULES: (1) SQLite: use better-sqlite3 DIRECTLY (not Prisma) — Prisma 7 removed native SQLite, the adapter(@prisma/adapter-better-sqlite3) is complex and error-prone. (2) PostgreSQL: use Prisma with provider="postgresql" OR pg package directly. NEVER mix SQLite adapter with Prisma 7. (3) Non-local deployments (Railway/Vercel/Fly/AWS): ALWAYS PostgreSQL — no SQLite regardless of environment. Get dev DATABASE_URL from Neon/Supabase free tier. (4) Vite+Express: ALWAYS add proxy in vite.config.ts: server:{proxy:{'/api':{target:'http://localhost:PORT',changeOrigin:true}}} — without this all fetch('/api') calls go to Vite port instead of backend.
 API CONTRACT (prevents "Unexpected end of JSON input"): (1) Every API endpoint MUST always return JSON — use res.json() even for errors, NEVER res.end() or res.send() with empty body except 204. (2) Add a global error handler: app.use((err,req,res,next)=>{res.status(err.status||500).json({message:err.message||'서버 오류'})}). (3) Frontend fetch MUST check response.ok before .json(): const r=await fetch(url,opts); if(!r.ok){const e=await r.json().catch(()=>({message:'서버 오류'})); throw new Error(e.message);} return r.json(). (4) Wrap every fetch call in try/catch and show the error message to the user (never swallow errors silently).
 UI: Follow existing stack. No stack → Tailwind CSS + shadcn/ui default. No arbitrary hex/inline styles.
 UI QUALITY: (1) contrast≥4.5:1, alt text, keyboard nav, aria-labels, no remove focus rings (2) tap≥44×44px, loading feedback, no hover-only (3) SVG icons, Tailwind tokens (4) mobile-first, viewport meta, no horizontal scroll (5) body≥16px/1.5lh, no gray-on-gray (6) animation 150-300ms, prefers-reduced-motion (7) visible labels, inline errors, disable submit on load (8) predictable back, bottom-nav≤5.
@@ -348,14 +349,16 @@ CHARTS: <script>{{BCAVE_CHARTJS}}</script>, canvas in position:relative;height:2
         "- SQLite·로컬 파일시스템 사용 금지 (Serverless 환경에서 영속화 불가).",
 
       railway:
-        "[배포 대상: Railway]\n" +
-        "- 백엔드: Node.js + Express (또는 Fastify) + TypeScript\n" +
-        "- DB: PostgreSQL — Railway Postgres 플러그인 (DATABASE_URL 자동 주입). Prisma ORM.\n" +
-        "- 프론트: React + Vite (별도 Railway 서비스) 또는 백엔드에서 정적 서빙\n" +
+        "[배포 대상: Railway — PostgreSQL 필수]\n" +
+        "- 백엔드: Node.js + Express + TypeScript\n" +
+        "- DB: ★ PostgreSQL 직접 사용 (pg 패키지). Prisma 사용 시 datasource provider = \"postgresql\" 필수.\n" +
+        "  ★★ SQLite·better-sqlite3·@prisma/adapter-better-sqlite3 절대 사용 금지. 로컬 개발이라도 같은 PostgreSQL 스키마 사용.\n" +
+        "  로컬 개발용 DATABASE_URL: Neon(neon.tech) 또는 Supabase 무료 티어에서 발급한 PostgreSQL URL 사용.\n" +
+        "  .env 에 DATABASE_URL=postgresql://... 를 설정하고 .env.example 에도 형식 포함.\n" +
+        "- 프론트: React + Vite. vite.config.ts 에 반드시 server.proxy 설정: '/api' → 'http://localhost:3001'.\n" +
         "- 인증: JWT + bcrypt, HttpOnly 쿠키 세션\n" +
-        "- 환경변수: Railway 대시보드 Variables\n" +
-        "- 배포: Dockerfile 또는 Nixpacks 자동 감지, git push → 자동 배포\n" +
-        "- SQLite 사용 금지 (Railway 볼륨 미설정 시 재배포마다 데이터 소실).",
+        "- 환경변수: Railway 대시보드 Variables (DATABASE_URL, JWT_SECRET 등)\n" +
+        "- 배포: Nixpacks 자동 감지, git push → 자동 배포",
 
       fly:
         "[배포 대상: Fly.io]\n" +
@@ -391,10 +394,10 @@ CHARTS: <script>{{BCAVE_CHARTJS}}</script>, canvas in position:relative;height:2
       local:
         "[배포 대상: 로컬 개발용]\n" +
         "- 백엔드: Node.js + Express + TypeScript (tsx watch로 HMR)\n" +
-        "- DB: SQLite (better-sqlite3 또는 sqlite3). 로컬 개발 한정.\n" +
-        "  단, 나중에 프로덕션 배포 시 PostgreSQL + Prisma로 마이그레이션 필요.\n" +
-        "  처음부터 Prisma를 쓰면 DB 전환이 설정 변경만으로 가능하므로 권장.\n" +
-        "- 프론트: React + Vite\n" +
+        "- DB: SQLite — better-sqlite3 직접 사용(Prisma 미사용 권장). 이유: Prisma 7은 SQLite 기본 지원 제거, @prisma/adapter-better-sqlite3 필요해 복잡도 증가.\n" +
+        "  better-sqlite3 로 직접 사용하는 패턴: const db = new Database('dev.db'); db.exec('CREATE TABLE IF NOT EXISTS ...');\n" +
+        "  나중에 프로덕션 배포 시 PostgreSQL(pg 패키지)로 교체 필요.\n" +
+        "- 프론트: React + Vite. vite.config.ts 에 반드시 server.proxy: { '/api': { target: 'http://localhost:3001', changeOrigin: true } }.\n" +
         "- 인증: JWT + bcrypt, HttpOnly 쿠키",
     };
     return guides[target] ?? guides["railway"]; // 기본값: Railway
