@@ -176,7 +176,7 @@ ARTIFACT vs APP: Real service/app (backend+API+DB+auth) → multi-file project. 
 UI: Follow existing stack. No stack → Tailwind CSS + shadcn/ui default. No arbitrary hex/inline styles.
 UI QUALITY: (1) contrast≥4.5:1, alt text, keyboard nav, aria-labels, no remove focus rings (2) tap≥44×44px, loading feedback, no hover-only (3) SVG icons, Tailwind tokens (4) mobile-first, viewport meta, no horizontal scroll (5) body≥16px/1.5lh, no gray-on-gray (6) animation 150-300ms, prefers-reduced-motion (7) visible labels, inline errors, disable submit on load (8) predictable back, bottom-nav≤5.
 WIRING: new page→add route+nav link; new API→frontend fetch+error; new component→import+render; schema change→migration. Read router/server after writing to confirm wire.
-HTML ARTIFACTS: (1) single .html, all CSS+JS inline (2) always new filename (3) save in cwd, no subdirectory.
+HTML ARTIFACTS: (1) single .html, all CSS+JS inline (2) always new filename (3) save in cwd, no subdirectory. (4) After saving, reply with ONLY the saved file path (e.g. "저장됨: /abs/path/dashboard.html") — no server launch, no "실행해드릴까요", no lengthy explanation. The user opens it directly in a browser.
 DATA: Use {{BCAVE_DATA:/path#sheet}} placeholder in <script>window.__DATA=…</script> only—never in visible HTML. Render from __DATA in JS (aggregate, slice top 50). Use {{BCAVE_SHEETS:path}} for multi-sheet. Re-emit placeholder on every edit. Never copy rows or leave empty arrays.
 CHARTS: <script>{{BCAVE_CHARTJS}}</script>, canvas in position:relative;height:280px div, maintainAspectRatio:false. Grid align-items:stretch for chart+side-card rows.`,
     });
@@ -455,13 +455,15 @@ CHARTS: <script>{{BCAVE_CHARTJS}}</script>, canvas in position:relative;height:2
       this.pendingDesignChoice = false;
     }
     const uiRequest = dashboardRequest || Boolean(pendingChoiceAnswer);
-    // 서비스 UI와 대시보드 모두 설정된 시스템을 기본 적용한다. 명시한 BCAVE/AXIS가 항상 우선한다.
-    if (!requestedSystem && (applicationUiRequest || uiRequest) && hasDesignSystem(this.config.designSystem)) {
+    // 명시적으로 지정된 시스템만 우선 적용한다.
+    // 대시보드 요청(uiRequest)은 항상 물어본다 — config.designSystem 기본값으로 자동 선택 금지.
+    // (앱 빌드의 applicationUiRequest 는 선택된 시스템을 유지해도 됨)
+    if (!requestedSystem && applicationUiRequest && !uiRequest && hasDesignSystem(this.config.designSystem)) {
       requestedSystem = this.config.designSystem;
     }
     if (uiRequest && !requestedSystem) {
       this.pendingDesignChoice = true;
-      const q = "이 대시보드/리포트에 사용할 디자인 시스템을 선택해 주세요: `1 BCAVE` 또는 `2 AXIS`.";
+      const q = "이 대시보드/리포트에 사용할 디자인 시스템을 선택해 주세요:\n\n  1. **BCAVE** ✦ 자사 브랜드 · 모노톤 슬레이트 (기본/공식)\n  2. **AXIS** — 밝은 코발트 · 모던 프로페셔널\n\n번호로 답해 주세요.";
       this.messages.push({ role: "user", content: userMessage });
       this.messages.push({ role: "assistant", content: q });
       yield { type: "text", content: q };

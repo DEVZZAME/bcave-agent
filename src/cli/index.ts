@@ -1046,11 +1046,11 @@ async function processAgentEvents(initialGen: AsyncGenerator<AgentEvent>): Promi
           // 디자인시스템 선택 질문 → 방향키 셀렉터로 인터셉트
           if (/디자인 시스템을 선택해 주세요/.test(event.content)) {
             const dsItems = [
-              { label: "BCAVE  ✦ 자사 브랜드 기본", dimLabel: "1. BCAVE — 자사 브랜드 · 모노톤 슬레이트 · PPT 표지 문법 (기본/공식)" },
+              { label: "BCAVE  ✦ 자사 브랜드 기본", dimLabel: "1. BCAVE ✦ 기본/공식 — 자사 브랜드 · 모노톤 슬레이트 · PPT 표지 문법" },
               { label: "AXIS", dimLabel: "2. AXIS — 밝은 코발트 · 모던 프로페셔널" },
             ];
             exitWorkInput();
-            console.log("\n  " + chalk.bold("디자인 시스템 선택") + chalk.dim("  (↑↓ 방향키·Enter 선택 · ESC 취소)"));
+            console.log("\n  " + chalk.bold("디자인 시스템 선택") + chalk.dim("  (↑↓ 방향키·Enter · ESC 취소)"));
             const idx = await showSelector(dsItems);
             enterWorkInput();
             if (idx >= 0) autoReply = String(idx + 1);
