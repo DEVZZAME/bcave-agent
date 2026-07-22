@@ -488,11 +488,11 @@ CHARTS: <script>{{BCAVE_CHARTJS}}</script>, canvas in position:relative;height:2
       if (this.selectedStack !== "existing" && !this.selectedDeployTarget) {
         const dq =
           "서비스를 어디에서 사용할까요?\n\n" +
-          "  1. **간편하게 인터넷에 공개** ✦ 빠른 시작 추천\n" +
-          "  2. **검색 노출 중심으로 인터넷에 공개**\n" +
-          "  3. **여러 지역에서 안정적으로 운영**\n" +
-          "  4. **회사 서버에서 직접 운영**\n" +
-          "  5. **내 컴퓨터에서 먼저 사용** — 빠르게 확인하고 나중에 온라인 전환\n\n" +
+          "  1. **내 컴퓨터에서 먼저 사용** ✦ 빠르게 확인하고 나중에 온라인 전환\n" +
+          "  2. **간편하게 인터넷에 공개** — 빠른 시작 추천\n" +
+          "  3. **검색 노출 중심으로 인터넷에 공개**\n" +
+          "  4. **여러 지역에서 안정적으로 운영**\n" +
+          "  5. **회사 서버에서 직접 운영**\n\n" +
           "번호로 답해 주세요.";
         this.pendingDeployChoice = true;
         this.messages.push({ role: "user", content: userMessage });
@@ -515,11 +515,11 @@ CHARTS: <script>{{BCAVE_CHARTJS}}</script>, canvas in position:relative;height:2
       // 배포 선택 대기 중 답변 처리
       const answer = userMessage.trim().toLowerCase();
       const targetMap: Record<string, string> = {
-        "1": "railway", railway: "railway",
-        "2": "vercel", vercel: "vercel",
-        "3": "fly", flyio: "fly",
-        "4": "aws", ec2: "aws", ecs: "aws", vps: "vps", ubuntu: "vps",
-        "5": "local", "6": "local", 로컬: "local", 개발용: "local",
+        "1": "local", 로컬: "local", 개발용: "local",
+        "2": "railway", railway: "railway",
+        "3": "vercel", vercel: "vercel",
+        "4": "fly", flyio: "fly",
+        "5": "aws", "6": "vps", ec2: "aws", ecs: "aws", vps: "vps", ubuntu: "vps",
       };
       const picked = Object.entries(targetMap).find(([k]) => answer.startsWith(k))?.[1];
       if (picked) {

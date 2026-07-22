@@ -1006,14 +1006,14 @@ async function handleSlashCommand(text: string): Promise<boolean> {
 
   if (trimmed === "/deploy") {
     const deployItems = [
-      { label: "검색 노출 중심으로 공개", dimLabel: "1. 검색 노출 중심으로 인터넷에 공개 (Vercel)" },
-      { label: "간편하게 인터넷에 공개  ✦ 추천", dimLabel: "2. 화면과 데이터 기능을 한 번에 공개 (Railway)" },
-      { label: "여러 지역에서 안정적으로 운영", dimLabel: "3. 이용자와 가까운 지역에서 운영 (Fly.io)" },
-      { label: "큰 규모의 회사 서비스", dimLabel: "4. 많은 사용자를 위한 회사용 운영 환경 (AWS)" },
-      { label: "회사 서버에서 직접 운영", dimLabel: "5. 보유한 서버에서 직접 관리" },
-      { label: "내 컴퓨터에서 먼저 사용", dimLabel: "6. 내 컴퓨터에 저장 ✦ 빠르게 확인하고 나중에 온라인 전환" },
+      { label: "내 컴퓨터에서 먼저 사용", dimLabel: "1. 내 컴퓨터에 저장 ✦ 빠르게 확인하고 나중에 온라인 전환" },
+      { label: "검색 노출 중심으로 공개", dimLabel: "2. 검색 노출 중심으로 인터넷에 공개 (Vercel)" },
+      { label: "간편하게 인터넷에 공개  ✦ 추천", dimLabel: "3. 화면과 데이터 기능을 한 번에 공개 (Railway)" },
+      { label: "여러 지역에서 안정적으로 운영", dimLabel: "4. 이용자와 가까운 지역에서 운영 (Fly.io)" },
+      { label: "큰 규모의 회사 서비스", dimLabel: "5. 많은 사용자를 위한 회사용 운영 환경 (AWS)" },
+      { label: "회사 서버에서 직접 운영", dimLabel: "6. 보유한 서버에서 직접 관리" },
     ];
-    const answers = ["vercel", "railway", "fly", "aws", "vps", "local"];
+    const answers = ["local", "vercel", "railway", "fly", "aws", "vps"];
     console.log("\n  " + chalk.bold("서비스를 어디에서 사용할까요?") + chalk.dim("  (↑↓ 방향키·Enter 선택 · ESC 취소)"));
     const idx = await showSelector(deployItems);
     if (idx >= 0) {
@@ -1085,22 +1085,22 @@ async function processAgentEvents(initialGen: AsyncGenerator<AgentEvent>): Promi
             // 스택 직후 배포 질문(5개) vs 독립 배포 질문(6개) 구분
             const isPostStack = /DB 종류|내 컴퓨터에서 먼저 사용/.test(event.content);
             const deployItems = isPostStack ? [
-              { label: "간편하게 인터넷에 공개  ✦ 추천", dimLabel: "1. 화면과 데이터 기능을 한 번에 공개" },
-              { label: "검색 노출 중심으로 공개", dimLabel: "2. 검색 결과 노출과 첫 화면 속도 중심" },
-              { label: "여러 지역에서 안정적으로 운영", dimLabel: "3. 이용자와 가까운 지역에서 운영" },
-              { label: "회사 서버에서 직접 운영", dimLabel: "4. 회사가 보유한 운영 환경 사용" },
-              { label: "내 컴퓨터에서 먼저 사용", dimLabel: "5. 내 컴퓨터에 저장 ✦ 빠르게 확인하고 나중에 온라인 전환" },
+              { label: "내 컴퓨터에서 먼저 사용  ✦ 추천", dimLabel: "1. 내 컴퓨터에 저장 ✦ 빠르게 확인하고 나중에 온라인 전환" },
+              { label: "간편하게 인터넷에 공개", dimLabel: "2. 화면과 데이터 기능을 한 번에 공개" },
+              { label: "검색 노출 중심으로 공개", dimLabel: "3. 검색 결과 노출과 첫 화면 속도 중심" },
+              { label: "여러 지역에서 안정적으로 운영", dimLabel: "4. 이용자와 가까운 지역에서 운영" },
+              { label: "회사 서버에서 직접 운영", dimLabel: "5. 회사가 보유한 운영 환경 사용" },
             ] : [
-              { label: "검색 노출 중심으로 공개", dimLabel: "1. 검색 결과 노출과 첫 화면 속도 중심" },
-              { label: "간편하게 인터넷에 공개  ✦ 추천", dimLabel: "2. 화면과 데이터 기능을 한 번에 공개" },
-              { label: "여러 지역에서 안정적으로 운영", dimLabel: "3. 이용자와 가까운 지역에서 운영" },
-              { label: "큰 규모의 회사 서비스", dimLabel: "4. 많은 사용자를 위한 회사용 환경" },
-              { label: "회사 서버에서 직접 운영", dimLabel: "5. 회사가 보유한 서버에서 직접 관리" },
-              { label: "내 컴퓨터에서 먼저 사용", dimLabel: "6. 내 컴퓨터에 저장 ✦ 빠르게 확인하고 나중에 온라인 전환" },
+              { label: "내 컴퓨터에서 먼저 사용  ✦ 추천", dimLabel: "1. 내 컴퓨터에 저장 ✦ 빠르게 확인하고 나중에 온라인 전환" },
+              { label: "검색 노출 중심으로 공개", dimLabel: "2. 검색 결과 노출과 첫 화면 속도 중심" },
+              { label: "간편하게 인터넷에 공개  ✦ 추천", dimLabel: "3. 화면과 데이터 기능을 한 번에 공개" },
+              { label: "여러 지역에서 안정적으로 운영", dimLabel: "4. 이용자와 가까운 지역에서 운영" },
+              { label: "큰 규모의 회사 서비스", dimLabel: "5. 많은 사용자를 위한 회사용 환경" },
+              { label: "회사 서버에서 직접 운영", dimLabel: "6. 회사가 보유한 서버에서 직접 관리" },
             ];
             const answers = isPostStack
               ? ["1", "2", "3", "4", "5"]
-              : ["vercel", "railway", "fly", "aws", "vps", "local"];
+              : ["local", "vercel", "railway", "fly", "aws", "vps"];
             exitWorkInput();
             console.log("\n  " + chalk.bold("서비스를 어디에서 사용할까요?") + chalk.dim("  ↑↓ 선택 · Enter 확인"));
             const idx = await showSelector(deployItems);
