@@ -146,6 +146,46 @@ describe("ConversationManager", () => {
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
+  it("auto-detects a template beside an absolute source document", async () => {
+    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "bcave-ppt-cwd-"));
+    const sourceDir = fs.mkdtempSync(path.join(os.tmpdir(), "bcave-ppt-source-"));
+    const source = path.join(sourceDir, "보고서.md");
+    const template = path.join(sourceDir, "team_template.pptx");
+    fs.writeFileSync(source, "# 보고서");
+    fs.writeFileSync(template, "PK");
+    const cm = new ConversationManager({ ...config, pptTemplatePath: "" }, new PermissionManager("yolo"), cwd);
+    const run = cm.run(`${source} 이걸로 피피티 만들어줘`);
+    expect((await run.next()).value).toMatchObject({ type: "model" });
+    expect(cm.getHistory().some((message) => message.role === "system" && String(message.content).includes(template))).toBe(true);
+    await run.return(undefined);
+    fs.rmSync(cwd, { recursive: true, force: true });
+    fs.rmSync(sourceDir, { recursive: true, force: true });
+  });
+
+  it("accepts a template path embedded in a full sentence", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bcave-ppt-explicit-"));
+    const template = path.join(dir, "bcave_ppt_template.pptx");
+    fs.writeFileSync(template, "PK");
+    const cm = new ConversationManager({ ...config, pptTemplatePath: "" }, new PermissionManager("yolo"), dir);
+    const run = cm.run(`보고서.md로 피피티 만들어줘. 템플릿은 ${template} 이거야`);
+    expect((await run.next()).value).toMatchObject({ type: "model" });
+    expect(cm.getHistory().some((message) => message.role === "system" && String(message.content).includes(template))).toBe(true);
+    await run.return(undefined);
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("clears a pending template question when the next request is a dashboard", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bcave-ppt-cancel-"));
+    const cm = new ConversationManager({ ...config, pptTemplatePath: "" }, new PermissionManager("yolo"), dir);
+    const ask = cm.run("보고서.md로 피피티 만들어줘");
+    expect((await ask.next()).value).toMatchObject({ type: "text", content: expect.stringContaining("템플릿") });
+    await ask.return(undefined);
+    const dashboard = cm.run("매출.xlsx로 대시보드 만들어줘");
+    expect((await dashboard.next()).value).toMatchObject({ type: "text", content: expect.stringContaining("디자인 시스템") });
+    await dashboard.return(undefined);
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
   it("does not let a stale design choice intercept a port troubleshooting request", async () => {
     const noDefault = { ...config, designSystem: "" };
     const cm = new ConversationManager(noDefault, new PermissionManager("yolo"), process.cwd());

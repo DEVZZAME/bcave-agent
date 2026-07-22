@@ -144,14 +144,19 @@ export function pptxTemplateFidelityIssues(templatePath: string, outputPath: str
 function pptxPathsFromText(value: string, cwd: string): string[] {
   const matches = [
     ...value.matchAll(/`([^`]+\.pptx)`/gi),
-    ...value.matchAll(/((?:\.{0,2}\/|\/)[^\n"']+?\.pptx)\b/gi),
+    ...value.matchAll(/["']([^"']+\.pptx)["']/gi),
+    ...value.matchAll(/(?:^|\s)((?:\.{1,2}\/|\/)[^\s"'`]+\.pptx)(?=\s|$)/gi),
   ].map((match) => path.resolve(cwd, match[1].trim()));
   return [...new Set(matches)];
 }
 
 function presentationSourcePathsFromText(value: string, cwd: string): string[] {
-  return [...new Set([...value.matchAll(/((?:(?:\.{1,2}\/|\/)?)[^\s\n"'`]+?\.(?:md|txt|csv|tsv|xlsx|xls|json|pdf))\b/gi)]
-    .map((match) => path.resolve(cwd, match[1].trim())))];
+  const matches = [
+    ...value.matchAll(/`([^`]+\.(?:md|txt|csv|tsv|xlsx|xls|json|pdf))`/gi),
+    ...value.matchAll(/["']([^"']+\.(?:md|txt|csv|tsv|xlsx|xls|json|pdf))["']/gi),
+    ...value.matchAll(/(?:^|\s)((?:(?:\.{1,2}\/|\/)?)[^\s"'`]+\.(?:md|txt|csv|tsv|xlsx|xls|json|pdf))(?=\s|$)/gi),
+  ].map((match) => path.resolve(cwd, match[1].trim()));
+  return [...new Set(matches)];
 }
 
 function resolvePresentationOutputPath(value: string, cwd: string, templatePath: string): string {
@@ -726,20 +731,28 @@ CHARTS: <script>{{BCAVE_CHARTJS}}</script>, canvas in position:relative;height:2
   async *run(userMessage: string, signal?: AbortSignal): AsyncGenerator<AgentEvent> {
     // 실제 백엔드가 있는 애플리케이션/서비스 요청 → 단일 정적 HTML 플로우가 아니라 진짜 프로젝트로 만든다.
     const appBuild = isAppBuild(userMessage);
-    const presentationRequest = isPresentationRequest(userMessage) || this.pendingPresentationTemplate;
+    const presentationIntent = isPresentationRequest(userMessage);
+    const suppliedPptxPaths = pptxPathsFromText(userMessage, this.cwd);
+    const pendingTemplateReply = this.pendingPresentationTemplate && suppliedPptxPaths.some((file) => fs.existsSync(file));
+    if (this.pendingPresentationTemplate && !presentationIntent && !pendingTemplateReply) {
+      this.pendingPresentationTemplate = false;
+    }
+    const presentationRequest = presentationIntent || pendingTemplateReply;
     if (presentationRequest) {
       const wasPendingPresentationTemplate = this.pendingPresentationTemplate;
       if (!wasPendingPresentationTemplate) {
         this.presentationOutputPath = resolvePresentationOutputPath(userMessage, this.cwd, this.presentationTemplatePath);
       }
-      const explicitPaths = pptxPathsFromText(userMessage, this.cwd).filter((file) => fs.existsSync(file));
+      const explicitPaths = suppliedPptxPaths.filter((file) => fs.existsSync(file));
       if (this.pendingPresentationTemplate && explicitPaths.length) {
         this.presentationTemplatePath = explicitPaths[0];
         this.pendingPresentationTemplate = false;
       }
       if (!this.presentationTemplatePath || !fs.existsSync(this.presentationTemplatePath)) {
+        const sourceDirectories = presentationSourcePathsFromText(userMessage, this.cwd).map((file) => path.dirname(file));
         this.presentationTemplatePath = explicitPaths.find((file) => /(?:template|템플릿|양식)/i.test(path.basename(file)))
-          || autoDetectPresentationTemplate(this.cwd);
+          || [this.cwd, ...sourceDirectories].map(autoDetectPresentationTemplate).find(Boolean)
+          || "";
       }
       if (!this.presentationTemplatePath) {
         this.pendingPresentationTemplate = true;
