@@ -112,6 +112,16 @@ describe("Tools", () => {
       expect(content).toBe("deep");
     });
 
+    it("rejects dashboards that discard normalized rows or read row objects by numeric index", async () => {
+      const result = await executeTool("write_file", {
+        path: "broken-data-dashboard.html",
+        content: `<!doctype html><html><body><canvas id="c"></canvas><script>window.__DATA={"월별요약":[{"연월":"2026-01","총매출":100}]};</script><script>const d=window.__DATA||{};const rows=(d['월별요약']||[]).slice(1);const labels=rows.map(r=>r[0]);</script></body></html>`,
+      }, testDir);
+      expect(result).toContain(".slice(1+)");
+      expect(result).toContain("숫자 인덱스");
+      expect(result).not.toContain("검토 통과");
+    });
+
     it("never tells the model to stop repairing a failed design lint", async () => {
       const args = {
         path: "invalid-dashboard.html",

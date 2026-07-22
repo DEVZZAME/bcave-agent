@@ -560,9 +560,17 @@ function reviewHtml(content: string, filePath: string): string[] {
     if (sheetsAsArray) {
       issues.push("다중 시트 데이터를 '배열'로 주입해놓고 sheets['시트명'] 처럼 '맵'으로 접근합니다 → 모든 시트 조회가 빈값이 되어 데이터가 안 보입니다. 여러 시트를 쓰면 window.__SHEETS = {{BCAVE_SHEETS:경로}} (시트명→행배열 맵) 로 주입하고 window.__SHEETS['시트명'] 로 읽으세요. 한 시트만 쓰면 그 배열을 직접 순회하세요(맵 접근 금지).");
     }
-    // 정리된 데이터에 .slice(N) 으로 앞행을 '헤더인 줄 알고' 버리는 오류
-    if (/(?:window\.__\w+|sheets\.\w+|__SHEETS\[[^\]]+\])\s*(?:\|\|\s*\[\s*\])?\s*\)?\s*\.slice\(\s*[1-9]/.test(content)) {
+    const appScripts = (content.match(/<script>[^]*?<\/script>/gi) || []).map((block) => block.slice(block.indexOf(">") + 1, -9)).filter((js) =>
+      js.length < 60_000 && !js.includes("Chart.js v") && !/^\s*window\.__DATA\s*=/.test(js),
+    ).join("\n");
+    // 정리된 데이터에 .slice(N) 으로 앞행을 '헤더인 줄 알고' 버리는 오류.
+    // 별칭(d['시트'])을 거쳐도 잡아야 하므로 앱 스크립트 전체에서 양수 시작 인덱스를 검사한다.
+    if (/\.slice\(\s*[1-9]\d*\s*(?:[,)]|$)/.test(appScripts)) {
       issues.push("주입된 데이터에 .slice(1+) 로 앞 행을 건너뜁니다. 데이터는 이미 정리된 행 객체 배열(제목행 자동 제거)이라 .slice 로 앞행을 버리면 실제 데이터가 사라집니다.");
+    }
+    // 주입 데이터의 각 행은 배열이 아니라 컬럼명→값 객체다. r[0], r[7]은 항상 undefined라 차트가 비게 된다.
+    if (/(?:\.map|\.filter|\.forEach|\.reduce)\s*\(\s*([A-Za-z_$][\w$]*)\s*=>[^;\n]{0,500}\1\s*\[\s*\d+\s*\]/.test(appScripts)) {
+      issues.push("주입된 행 객체를 r[0], r[7]처럼 숫자 인덱스로 읽고 있습니다. 각 행은 배열이 아니므로 값이 undefined가 되어 차트·표가 비게 됩니다. r['연월'], r['총매출'], r['세그먼트']처럼 read_file에 표시된 실제 컬럼명을 사용하세요.");
     }
     // 고정 높이 차트 박스 + 2단 grid + align-items:start → 좌(차트)·우(카드) 아래끝 어긋남
     const twoColGrid = /grid-template-columns\s*:\s*[^;{}]*(?:fr|minmax)[^;{}]*(?:fr|minmax)/i.test(content);
