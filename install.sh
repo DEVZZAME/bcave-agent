@@ -15,7 +15,7 @@ INSTALL_DIR="$HOME/.bcave-cli"
 BIN_DIR="$HOME/.local/bin"
 ENTRY_REL="dist/cli/index.js"
 LOCK_DIR="$HOME/.bcave-cli.install.lock"
-REPO_URL="${BCAVE_REPO_URL:-https://github.com/DEVZZAME/bcave-agent.git}"
+REPO_URL="${BCAVE_REPO_URL:-https://github.com/DEVZZAME/bcave-code.git}"
 TEMP_DIR=""
 BACKUP_DIR=""
 FAILED_DIR=""
@@ -124,7 +124,7 @@ cat > "$LAUNCHER_TMP" <<EOF
 entry="$INSTALL_DIR/$ENTRY_REL"
 if [ ! -f "\$entry" ]; then
   echo "BCAVE_ENTRY_MISSING: BCave 설치가 불완전합니다." >&2
-  echo "복구: curl -fsSL https://raw.githubusercontent.com/DEVZZAME/bcave-agent/master/install.sh | bash" >&2
+  echo "복구: curl -fsSL https://raw.githubusercontent.com/DEVZZAME/bcave-code/master/install.sh | bash" >&2
   exit 1
 fi
 exec node "\$entry" "\$@"

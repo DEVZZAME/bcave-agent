@@ -3,7 +3,7 @@ import path from "node:path";
 import { execFileSync, spawnSync, type SpawnSyncReturns } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
-export const REPOSITORY_URL = "https://github.com/DEVZZAME/bcave-agent.git";
+export const REPOSITORY_URL = "https://github.com/DEVZZAME/bcave-code.git";
 
 export function resolveInstallDir(moduleUrl = import.meta.url): string {
   return path.resolve(path.dirname(fileURLToPath(moduleUrl)), "..", "..");

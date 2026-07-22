@@ -30,7 +30,7 @@ xcode-select --install
 BCave를 설치합니다.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/DEVZZAME/bcave-agent/master/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/DEVZZAME/bcave-code/master/install.sh | bash
 ```
 
 설치 후 터미널을 완전히 닫았다가 다시 열고 실행합니다.
@@ -53,7 +53,7 @@ git --version
 BCave를 설치합니다.
 
 ```powershell
-irm https://raw.githubusercontent.com/DEVZZAME/bcave-agent/master/install.ps1 | iex
+irm https://raw.githubusercontent.com/DEVZZAME/bcave-code/master/install.ps1 | iex
 ```
 
 설치 후 모든 PowerShell 또는 cmd 창을 닫고 새 창에서 실행합니다.
@@ -74,7 +74,7 @@ git --version
 배포판 기본 Node.js가 20보다 오래된 경우 [Node.js LTS](https://nodejs.org/)나 NodeSource/nvm으로 LTS 버전을 설치합니다.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/DEVZZAME/bcave-agent/master/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/DEVZZAME/bcave-code/master/install.sh | bash
 ```
 
 새 터미널에서 실행합니다.
