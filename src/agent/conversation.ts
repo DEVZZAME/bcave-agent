@@ -158,6 +158,8 @@ export class ConversationManager {
   private pendingDesignChoice = false;
   private selectedDesignSystem = "";
   private applicationActive = false;
+  private pendingStackChoice = false; // 앱 빌드 시 스택 선택 대기
+  private selectedStack = ""; // 선택된 기술 스택
   private pendingDeployChoice = false; // 앱 빌드 시 배포 옵션 선택 대기
   private selectedDeployTarget = ""; // 선택된 배포 플랫폼
 
@@ -370,13 +372,47 @@ CHARTS: <script>{{BCAVE_CHARTJS}}</script>, canvas in position:relative;height:2
     // ─── 배포 옵션 선택 ───────────────────────────────────────────────────────
     // 새 앱 빌드 요청이면 배포 대상을 먼저 물어본다 (프로덕션 스택을 결정하기 위해).
     // 이미 선택됐거나, 메시지에 명시됐거나, 배포 선택 답변이면 건너뛴다.
+    // ─── 스택 선택: 새 앱 빌드 + 기존 스택 없을 때 먼저 물어본다 ────────────────
+    const hasExistingStack = (() => {
+      // package.json 이 있으면 기존 스택이 있다고 본다
+      try { return fs.existsSync(path.join(this.cwd, "package.json")); } catch { return false; }
+    })();
+    if (appBuild && !this.selectedStack && !hasExistingStack && !this.pendingStackChoice) {
+      const q =
+        "어떤 기술 스택으로 만들까요?\n\n" +
+        "  1. **React + Vite + Express** ✦ 가장 유연, 빠른 시작 (추천)\n" +
+        "  2. **Next.js 풀스택** ✦ SSR·SEO 필요한 서비스 추천 — App Router + API Routes\n" +
+        "  3. **Vue 3 + Vite + Express** — Vue 선호 시\n" +
+        "  4. **React + Vite + Fastify** — 고성능 API 필요 시\n" +
+        "  5. **알아서 선택** — 요청 내용 보고 가장 적합한 스택으로\n\n" +
+        "번호나 이름으로 답해 주세요.";
+      this.pendingStackChoice = true;
+      this.messages.push({ role: "user", content: userMessage });
+      this.messages.push({ role: "assistant", content: q });
+      yield { type: "text", content: q };
+      yield { type: "done" };
+      return;
+    }
+    if (this.pendingStackChoice) {
+      const answer = userMessage.trim().toLowerCase();
+      const stackMap: Record<string, string> = {
+        "1": "react-vite-express", react: "react-vite-express", vite: "react-vite-express", express: "react-vite-express",
+        "2": "nextjs", next: "nextjs", nextjs: "nextjs", "next.js": "nextjs",
+        "3": "vue-vite-express", vue: "vue-vite-express",
+        "4": "react-vite-fastify", fastify: "react-vite-fastify",
+        "5": "auto", 알아서: "auto",
+      };
+      const picked = Object.entries(stackMap).find(([k]) => answer.startsWith(k))?.[1];
+      this.selectedStack = picked ?? "auto";
+      this.pendingStackChoice = false;
+      if (appBuild) this.applicationActive = true;
+    }
+
     if (appBuild && !this.selectedDeployTarget) {
       const explicitTarget = detectDeployTarget(userMessage);
       if (explicitTarget) {
         this.selectedDeployTarget = explicitTarget;
       } else {
-        // 배포 환경이 명시되지 않으면 로컬로 먼저 만든다.
-        // 구현 완료 후 플래너 "완료 후" 단계에서 배포 옵션을 제안한다.
         this.selectedDeployTarget = "local";
       }
     } else if (this.pendingDeployChoice && !appBuild) {
@@ -448,13 +484,22 @@ CHARTS: <script>{{BCAVE_CHARTJS}}</script>, canvas in position:relative;height:2
       );
     }
     if (appBuild || this.applicationActive) {
-      const deployTarget = this.selectedDeployTarget || "railway";
+      const deployTarget = this.selectedDeployTarget || "local";
       const deployGuide = ConversationManager.deployStackGuide(deployTarget);
+      // 스택 선택 결과를 스택 가이드로 변환
+      const stackGuide = (() => {
+        const s = this.selectedStack;
+        if (!s || s === "auto") return "";
+        if (s === "nextjs") return "\n[선택된 스택: Next.js 풀스택] — Next.js App Router + API Routes + TypeScript. npm create next-app@latest으로 시작. 인증은 NextAuth.js 또는 직접 JWT.";
+        if (s === "vue-vite-express") return "\n[선택된 스택: Vue 3 + Vite + Express] — 프론트: Vue 3 + Vite + Vue Router + Pinia. 백엔드: Express + TypeScript.";
+        if (s === "react-vite-fastify") return "\n[선택된 스택: React + Vite + Fastify] — 프론트: React + Vite + React Router. 백엔드: Fastify + TypeScript.";
+        return "\n[선택된 스택: React + Vite + Express] — 프론트: React + Vite + React Router + Tailwind CSS + shadcn/ui. 백엔드: Express + TypeScript.";
+      })();
       this.messages.push({
         role: "system",
         content:
           "[APPLICATION_CONTEXT]\n이 요청은 실제로 동작하는 서비스/애플리케이션이다. 정적 HTML 파일 몇 개로 끝내지 말 것.\n\n" +
-          deployGuide + "\n\n" +
+          deployGuide + stackGuide + "\n\n" +
           "공통 규칙:\n" +
           "- 프론트엔드 스타일: Tailwind CSS + shadcn/ui (shadcn 없으면 Tailwind 유틸리티, 임의 hex/inline style 금지)\n" +
           "- 프론트엔드: API를 fetch로 호출해 실제 데이터 렌더 (정적 더미데이터 금지)\n" +
