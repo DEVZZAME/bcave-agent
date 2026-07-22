@@ -10,7 +10,7 @@ import { executeTool, getToolCategory } from "./tools.js";
 import { PermissionManager, type PermissionCategory } from "./permissions.js";
 import { saveConfig, type BcaveConfig } from "../config/config.js";
 import { pickModel, classifyTask } from "./router.js";
-import { classifyUiSurface, isAppBuild } from "./request-classification.js";
+import { classifyUiSurface, isAppBuild, isDashboardArtifactRequest } from "./request-classification.js";
 import { designRules, designSystemDir, designSystemNames, hasDesignSystem, isUiArtifactRequest } from "../design-system/runtime.js";
 import { hubRefresh } from "../auth/hub.js";
 
@@ -171,6 +171,7 @@ export class ConversationManager {
 ARTIFACT vs APPLICATION (decide first): if the user asks for a real SERVICE / APPLICATION (backend, API, data, accounts/auth, CRUD, persistence, a running app), build an ACTUAL multi-file, runnable project WITH A REAL BACKEND — never deliver a few static HTML files and call it a service, and never fake data/auth in the frontend. The SINGLE-self-contained-HTML rule below applies ONLY to standalone artifacts (a dashboard, a report, a landing/one-off page, a mockup). For applications, ignore the single-HTML rule and follow the per-request application note.
 UI / SCREENS (service & app development): When building product UI — screens, pages, components, forms, flows, features — build real, modern, production-quality web UI exactly like a general coding agent (Claude Code / Codex) would.
 Then inspect the repo and FOLLOW its existing stack and conventions: framework (React / Vue / Next / Svelte / plain HTML), styling (Tailwind / CSS Modules / styled-components / plain CSS), component library, routing, and file layout. Wire it into the codebase. If no stack exists yet, pick sensible modern defaults and say so.
+WIRING (mandatory — the most common source of "잔잔한 이슈"): every new screen/page MUST be wired into the running app before declaring done. Checklist: (1) route added to the router file (Next.js: file in pages/ or app/, React Router: <Route> in router config, Express: app.get/use); (2) navigation link added where users would expect to reach it; (3) API calls in the frontend actually point to the correct endpoint paths; (4) new backend routes are actually mounted on the server (app.use / router registration); (5) env vars / config used in code actually exist in .env.example. Never create a file and leave it disconnected. After writing, read the router/nav/server-entry to confirm the wire is in place.
 FILE RULES (mandatory): (1) SINGLE self-contained .html file — ALL CSS and JS inline; no separate .css/.js files, no external stylesheet links (a web-font link and an inlined chart lib are the only allowed externals). (2) ALWAYS write to a NEW file that does not already exist (e.g. <name>.html → <name>-2.html …); NEVER overwrite a previous page/dashboard, even for a "다르게/더 심플하게" iteration — so the user can keep and compare versions. (3) Save the file in the CURRENT working directory (where the user ran the command) — do NOT create or nest it inside a subfolder (never invent a project subdirectory for a single HTML deliverable).
 DATA (mandatory — the #1 cause of "data disappeared on edit"): ALWAYS inject spreadsheet data with the {{BCAVE_DATA:/abs/path#sheet}} placeholder — on the FIRST build AND on EVERY later edit/redesign. write_file resolves it to the FULL dataset at save time, so re-emitting the placeholder always re-injects all rows. The data-source path does NOT change across edits — reuse the SAME path from earlier in the conversation. When the user asks to "change / develop / redo" a data page, you are writing a NEW file (per FILE RULES) that must contain the data again: put {{BCAVE_DATA:path}} back in. NEVER hand-copy rows out of the previous HTML, NEVER paste a sample/subset, NEVER leave a data array empty (window.__DATA=[] / data:[]), and do NOT try to read the big data blob back from the old file (read_file truncates it) — just reference the original path via the placeholder. If you don't have the path, ASK for it rather than shipping empty data.
 DATA BINDING & RENDERING (mandatory — how to actually USE the injected data): the placeholder MUST go ONLY inside a script as a JS variable — <script>window.__DATA = {{BCAVE_DATA:/abs/path#sheet}};</script> (each row = an object keyed by real column names). NEVER place {{BCAVE_DATA}} inside visible HTML (a <td>, <p>, <div>…) — doing so dumps the raw JSON array as a giant wall of text (this is a severe bug). Then RENDER everything from window.__DATA in JS: compute KPIs/aggregates (sums, averages, group-by) and build tables/chart datasets by iterating the array. Tables: use the REAL column names (never "컬럼 1/2/3"), and render only a sensible slice (e.g. top 20–50 rows or an aggregated summary), NOT all thousands of rows. Charts: the labels and numbers MUST be derived from window.__DATA by aggregating it (e.g. group-by month → sum) — NEVER hardcode placeholder series like labels ['Q1'..'Q8'] / data [12,19,15,…]. Section titles must name real content ("월별 매출", "지역별 분포"), not meta/narration ("보이는 것", "다음 보기", "확인 포인트", "데이터 해석").
@@ -315,20 +316,23 @@ COMPOSITION DISCIPLINE:
       requestedSystem = withoutPaths.trim().startsWith("1") ? "bcave" : "axis";
       if (!systems.includes(requestedSystem)) requestedSystem = "";
     }
+    // applicationUiRequest: 서비스 맥락에서 화면 요청 → 디자인시스템 적용
     const applicationUiRequest = appBuild || (this.applicationActive && isUiArtifactRequest(userMessage));
-    const directUiRequest = !applicationUiRequest && isUiArtifactRequest(userMessage);
-    // 디자인 선택을 기다리던 중 포트·서버·파일 등 다른 요청이 들어오면 더 이상 가로채지 않는다.
-    if (this.pendingDesignChoice && !pendingChoiceAnswer && !directUiRequest) {
+    // dashboardRequest: 단독 대시보드/리포트 산출물 → 디자인시스템 강제 파이프라인
+    // 단순 "화면 만들어줘"/"페이지 만들어줘"는 해당하지 않음 — 디자인시스템 제약 없이 자유롭게 구현
+    const dashboardRequest = !applicationUiRequest && isDashboardArtifactRequest(userMessage);
+    // 디자인 선택을 기다리던 중 관계없는 요청이 오면 대기 해제
+    if (this.pendingDesignChoice && !pendingChoiceAnswer && !dashboardRequest) {
       this.pendingDesignChoice = false;
     }
-    const uiRequest = directUiRequest || Boolean(pendingChoiceAnswer);
-    // 서비스와 UI 산출물 모두 설정된 시스템을 기본 적용한다. 명시한 BCAVE/AXIS가 항상 우선한다.
+    const uiRequest = dashboardRequest || Boolean(pendingChoiceAnswer);
+    // 서비스 UI와 대시보드 모두 설정된 시스템을 기본 적용한다. 명시한 BCAVE/AXIS가 항상 우선한다.
     if (!requestedSystem && (applicationUiRequest || uiRequest) && hasDesignSystem(this.config.designSystem)) {
       requestedSystem = this.config.designSystem;
     }
     if (uiRequest && !requestedSystem) {
       this.pendingDesignChoice = true;
-      const q = "이 대시보드/화면에 사용할 디자인 시스템을 선택해 주세요: `1 BCAVE` 또는 `2 AXIS`.";
+      const q = "이 대시보드/리포트에 사용할 디자인 시스템을 선택해 주세요: `1 BCAVE` 또는 `2 AXIS`.";
       this.messages.push({ role: "user", content: userMessage });
       this.messages.push({ role: "assistant", content: q });
       yield { type: "text", content: q };
@@ -385,13 +389,21 @@ COMPOSITION DISCIPLINE:
           "- 단일 인라인 HTML 규칙은 여기 적용되지 않는다(정상적인 다중 파일 프로젝트로).]",
       });
     }
-    // B) 계획 먼저: 실질적 개발 작업(앱 빌드 또는 UI 단일 파일 제외의 heavy)은 큰 걸 한 번에 쏟지 말고 쪼개서 구현
-    //    → 작고 명확한 단계는 약한 모델이 가장 안정적으로 처리하는 지점.
+    // B) 계획 먼저 + 완료 기준 명시: 실질적 개발 작업은 작게 쪼개되, 반드시 실제로 연결까지 확인한다.
     if (appBuild || classifyTask(userMessage) === "heavy") {
       this.messages.push({
         role: "system",
         content:
-          "[실질적인 개발/구현 작업이다. 바로 코드를 쏟지 말고 먼저 짧은 계획을 세워라: (1) 목표 1~2줄 (2) 만들거나 수정할 파일 목록 (3) 순서 있는 구현 체크리스트. 그다음 한 번에 한 조각씩 구현하고, 각 조각을 마치면 빌드/타입체크로 정확성을 확인하라. 애매하면 가정을 한 줄로 명시하고 진행. 거대한 덩어리를 한 번에 만들지 말 것 — 작은 단위가 품질을 높인다.]",
+          "[실질적인 개발/구현 작업이다. 다음 순서로 진행한다:\n" +
+          "1) 계획: (a) 목표 1~2줄, (b) 만들거나 수정할 파일 목록, (c) 순서 있는 체크리스트.\n" +
+          "2) 구현: 한 번에 한 조각씩. 각 조각이 끝나면 build/typecheck로 정확성 확인.\n" +
+          "3) 연결 검증(핵심): 새 파일/기능을 만든 후 반드시 기존 코드에 실제로 연결됐는지 확인한다.\n" +
+          "   - 새 페이지/화면: 라우터 파일에 route가 추가됐는가? 네비게이션에 링크가 있는가?\n" +
+          "   - 새 API 엔드포인트: 프론트에서 실제로 fetch 호출하는가? 에러 처리가 있는가?\n" +
+          "   - 새 컴포넌트: import해서 실제로 렌더하는 곳이 있는가?\n" +
+          "   - DB 스키마 변경: migration이 적용됐는가? seed가 필요한가?\n" +
+          "   연결이 빠진 채로 '완료'라고 하지 말 것 — 만든 것이 실제로 동작하는 경로까지가 완료다.\n" +
+          "4) 완료 응답: 만든 파일, 추가한 route/link, 실행 명령만 간결히. 불필요한 설명 생략.]",
       });
     }
     this.messages.push({ role: "user", content: userMessage });

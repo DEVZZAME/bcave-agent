@@ -20,3 +20,12 @@ export function classifyUiSurface(message?: string): UiSurface {
   }
   return "platform";
 }
+
+/**
+ * 단독 HTML 대시보드/리포트 산출물인가 (디자인시스템 파이프라인을 강제하는 경우).
+ * 단순 화면 요청("화면 만들어줘", "페이지 만들어줘")은 해당하지 않는다.
+ * 디자인시스템 제약은 대시보드/리포트와 서비스 맥락의 앱 UI에만 적용한다.
+ */
+export function isDashboardArtifactRequest(message: string): boolean {
+  return /(대시보드|dashboard|리포트|보고서|report|analytics\s*화면)/i.test(message);
+}
