@@ -154,66 +154,83 @@ async function showSelector(items: SelectorItem[], initialIndex = 0): Promise<nu
     let selected = initialIndex;
     const count = items.length;
 
-    const cols = () => (process.stdout.columns || 80) - 1;
-    function truncate(s: string, max: number): string {
-      return truncWidth(s, max);
-    }
-    // 각 항목을 터미널 폭 1줄로 렌더 (줄바꿈 방지 → 커서 계산이 어긋나지 않음)
+    // ── readline/stdin 완전 무음화 ──────────────────────────────────────
+    // rl이 활성이면 키 입력이 에코되거나 prompt가 stdout에 출력돼 커서 위치가 어긋난다.
+    // 셀렉터 표시 중에는 rl을 완전히 닫고, stdin을 raw 모드로 직접 읽는다.
+    try { rl.pause(); } catch { /* noop */ }
+    const prevRawMode = process.stdin.isRaw;
+    try { process.stdin.setRawMode(true); } catch { /* noop */ }
+    process.stdin.resume();
+
+    // stdout 출력 직전 커서 숨김 / 이후 표시 (깜빡임 방지)
+    const hideCursor = () => process.stdout.write("\x1b[?25l");
+    const showCursor = () => process.stdout.write("\x1b[?25h");
+
+    const cols = () => Math.max(40, (process.stdout.columns || 80) - 4);
     function lineText(i: number): string {
-      const prefix = i === selected ? "  › " : "    ";
-      const full = prefix + truncate(items[i].dimLabel, cols() - prefix.length);
-      return i === selected ? chalk.cyan(full) : chalk.dim(full);
+      const prefix = i === selected ? "  \x1b[36m›\x1b[0m " : "    ";
+      const label = truncWidth(items[i].dimLabel, cols() - 4);
+      const colored = i === selected ? `\x1b[96m${label}\x1b[0m` : `\x1b[2m${label}\x1b[0m`;
+      return prefix + colored;
     }
 
-    let drawn = false;
-    // 매 입력마다 블록 전체를 다시 그린다 (부분 갱신 desync 제거).
+    let linesDrawn = 0;
     function render(): void {
-      if (drawn) process.stdout.write(`\x1b[${count}A`); // 블록 맨 위로
-      for (let i = 0; i < count; i++) {
-        process.stdout.write("\r\x1b[2K" + lineText(i) + "\n");
+      hideCursor();
+      // 이전 블록 지우기: 이미 그린 줄만큼 올라가서 지운다
+      if (linesDrawn > 0) {
+        process.stdout.write(`\x1b[${linesDrawn}A`);
       }
-      drawn = true;
+      const out: string[] = [];
+      for (let i = 0; i < count; i++) {
+        out.push("\r\x1b[2K" + lineText(i));
+      }
+      process.stdout.write(out.join("\n") + "\n");
+      linesDrawn = count;
+      showCursor();
     }
-    function clearBlock(): void {
-      process.stdout.write(`\x1b[${count}A`);
-      for (let i = 0; i < count; i++) process.stdout.write("\r\x1b[2K\n");
-      process.stdout.write(`\x1b[${count}A`);
-      // readline 이 처리한 키가 다음 입력으로 새지 않도록 버퍼 비움
+
+    function cleanup(result: number): void {
+      // 블록 전체 지우기
+      if (linesDrawn > 0) {
+        process.stdout.write(`\x1b[${linesDrawn}A`);
+        for (let i = 0; i < linesDrawn; i++) process.stdout.write("\r\x1b[2K\n");
+        process.stdout.write(`\x1b[${linesDrawn}A`);
+      }
+      showCursor();
+      process.stdin.removeListener("data", onData);
+      try { process.stdin.setRawMode(prevRawMode ?? false); } catch { /* noop */ }
+      try { rl.resume(); } catch { /* noop */ }
+      // readline 버퍼 초기화
       const rlAny = rl as unknown as { line: string; cursor: number };
-      rlAny.line = "";
-      rlAny.cursor = 0;
+      rlAny.line = ""; rlAny.cursor = 0;
+      selectorActive = false;
+      resolve(result);
     }
 
-    render();
+    // stdin을 raw 바이트로 직접 읽음 → readline 에코 간섭 없음
+    const onData = (buf: Buffer) => {
+      const b = buf[0];
+      const seq = buf.toString();
 
-    const onKeypress = (str: string, key: readline.Key) => {
-      if (!key) return;
-      if (key.name === "up") {
+      if (seq === "\x1b[A" || b === 0x41 && buf[0] === 0x1b) { // up
         selected = (selected - 1 + count) % count;
         render();
-      } else if (key.name === "down") {
+      } else if (seq === "\x1b[B") { // down
         selected = (selected + 1) % count;
         render();
-      } else if (key.name === "return") {
-        process.stdin.removeListener("keypress", onKeypress);
-        clearBlock();
-        selectorActive = false;
-        resolve(selected);
-      } else if (key.name === "escape" || key.name === "backspace") {
-        process.stdin.removeListener("keypress", onKeypress);
-        clearBlock();
-        selectorActive = false;
-        resolve(-1);
-      } else if (str >= "1" && str <= String(Math.min(9, count))) {
-        selected = parseInt(str) - 1;
-        process.stdin.removeListener("keypress", onKeypress);
-        clearBlock();
-        selectorActive = false;
-        resolve(selected);
+      } else if (b === 0x0d || b === 0x0a) { // enter
+        cleanup(selected);
+      } else if (b === 0x1b && buf.length === 1) { // esc
+        cleanup(-1);
+      } else if (b >= 0x30 && b <= 0x39) { // 0-9 숫자
+        const n = b - 0x30;
+        if (n >= 0 && n < count) { selected = n; cleanup(selected); }
       }
     };
 
-    process.stdin.on("keypress", onKeypress);
+    process.stdin.on("data", onData);
+    render();
   });
 }
 
@@ -280,14 +297,14 @@ function shortPath(p: string): string {
   const home = os.homedir();
   const rel = p.startsWith(home) ? "~" + p.slice(home.length) : p;
   const cols = getTermWidth();
-  // prompt 고정부분("Yolo mode " + " > ") 폭 계산 후 남은 공간
-  const fixed = MODE_INFO[mode].label.length + 4; // "Yolo mode " + " > "
-  const maxPath = Math.max(20, cols - fixed - 5);
+  // 프롬프트 고정 부분 폭: "Auto mode " + " > " (chalk 색상 코드 제외한 실제 표시 폭)
+  const modeLabel = MODE_INFO[mode].label; // e.g. "Auto mode"
+  const fixedWidth = dispWidth(modeLabel) + 3; // " > " = 3
+  const maxPath = Math.max(15, cols - fixedWidth - 2);
   if (dispWidth(rel) <= maxPath) return rel;
-  // 너무 길면 끝 2단계만
-  const parts = p.split("/");
-  const short = "…/" + parts.slice(-2).join("/");
-  return short;
+  // 너무 길면 끝 2단계만 (~/.../parent/dir)
+  const parts = p.replace(home, "~").split("/").filter(Boolean);
+  return (p.startsWith(home) ? "~" : "") + "/…/" + parts.slice(-2).join("/");
 }
 
 function prompt(): void {
