@@ -125,10 +125,46 @@ async function smokeTest(cwd: string, signal?: AbortSignal): Promise<{ ok: boole
     kill();
   }
 
-  if (up) return { ok: true, detail: "", startCmd };
-  const tail = logs.join("").slice(-4000).trim();
-  const reason = exited !== null && exited !== 0 ? `서버가 시작 직후 종료됨(exit ${exited})` : "제한 시간 내 HTTP 응답 없음(서버가 기동/바인딩 실패했거나 PORT 를 안 씀)";
-  return { ok: false, detail: `[스모크 실패: ${reason}] 시작 명령: ${startCmd}\n서버는 반드시 process.env.PORT 를 사용해 바인딩해야 합니다.\n${tail || "(출력 없음)"}`, startCmd };
+  if (!up) {
+    const tail = logs.join("").slice(-4000).trim();
+    const reason = exited !== null && exited !== 0 ? `서버가 시작 직후 종료됨(exit ${exited})` : "제한 시간 내 HTTP 응답 없음(서버가 기동/바인딩 실패했거나 PORT 를 안 씀)";
+    return { ok: false, detail: `[스모크 실패: ${reason}] 시작 명령: ${startCmd}\n서버는 반드시 process.env.PORT 를 사용해 바인딩해야 합니다.\n${tail || "(출력 없음)"}`, startCmd };
+  }
+
+  // ── API 응답 검증: 핵심 엔드포인트가 빈 바디/HTML 오류를 반환하지 않는지 확인 ──
+  // "Unexpected end of JSON input" 류 오류는 서버가 빈 응답·HTML·500을 내려줄 때 발생한다.
+  const upPort = candidates().find(p => p > 0) ?? port;
+  const apiChecks: Array<{ path: string; method: string; body?: string }> = [
+    { path: "/api/health", method: "GET" },
+    { path: "/health", method: "GET" },
+    { path: "/api/auth/me", method: "GET" },
+  ];
+  const apiIssues: string[] = [];
+  for (const check of apiChecks) {
+    try {
+      const res = await fetch(`http://127.0.0.1:${upPort}${check.path}`, {
+        method: check.method,
+        headers: { "Content-Type": "application/json" },
+        signal: AbortSignal.timeout(3000),
+      });
+      const text = await res.text();
+      // JSON 파싱 가능 여부 확인 (빈 바디나 HTML 오류 페이지 감지)
+      if (text.trim()) {
+        try { JSON.parse(text); }
+        catch { apiIssues.push(`${check.method} ${check.path} → JSON 파싱 불가 (빈 바디 또는 HTML 반환): ${text.slice(0, 120)}`); }
+      }
+    } catch { /* 엔드포인트 없음은 정상 */ }
+  }
+
+  if (apiIssues.length > 0) {
+    return {
+      ok: false,
+      detail: `[API 검증 실패] 서버는 기동됐지만 API 응답이 올바르지 않습니다:\n${apiIssues.map(i => "  - " + i).join("\n")}\n\n해결 방법:\n  1. 모든 API 엔드포인트는 항상 JSON을 반환해야 합니다(res.json() 사용).\n  2. 오류 상황에서도 빈 응답(204 외)을 반환하지 마세요.\n  3. Express 전역 오류 핸들러를 추가하세요: app.use((err,req,res,next)=>res.status(500).json({message:err.message}))`,
+      startCmd,
+    };
+  }
+
+  return { ok: true, detail: `서버 기동 및 API 검증 완료 (포트 ${upPort})`, startCmd };
 }
 
 export interface ToolCallRequest {
@@ -173,6 +209,7 @@ export class ConversationManager {
       content: `You are BCave, a CLI coding agent. Working directory: ${cwd}. Use tools to interact with the filesystem and shell. Respond in the user's language.
 
 ARTIFACT vs APP: Real service/app (backend+API+DB+auth) → multi-file project. Standalone dashboard/report/landing → single self-contained HTML. Never fake data with static arrays.
+API CONTRACT (prevents "Unexpected end of JSON input"): (1) Every API endpoint MUST always return JSON — use res.json() even for errors, NEVER res.end() or res.send() with empty body except 204. (2) Add a global error handler: app.use((err,req,res,next)=>{res.status(err.status||500).json({message:err.message||'서버 오류'})}). (3) Frontend fetch MUST check response.ok before .json(): const r=await fetch(url,opts); if(!r.ok){const e=await r.json().catch(()=>({message:'서버 오류'})); throw new Error(e.message);} return r.json(). (4) Wrap every fetch call in try/catch and show the error message to the user (never swallow errors silently).
 UI: Follow existing stack. No stack → Tailwind CSS + shadcn/ui default. No arbitrary hex/inline styles.
 UI QUALITY: (1) contrast≥4.5:1, alt text, keyboard nav, aria-labels, no remove focus rings (2) tap≥44×44px, loading feedback, no hover-only (3) SVG icons, Tailwind tokens (4) mobile-first, viewport meta, no horizontal scroll (5) body≥16px/1.5lh, no gray-on-gray (6) animation 150-300ms, prefers-reduced-motion (7) visible labels, inline errors, disable submit on load (8) predictable back, bottom-nav≤5.
 WIRING: new page→add route+nav link; new API→frontend fetch+error; new component→import+render; schema change→migration. Read router/server after writing to confirm wire.
