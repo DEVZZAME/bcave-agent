@@ -488,11 +488,9 @@ CHARTS: <script>{{BCAVE_CHARTJS}}</script>, canvas in position:relative;height:2
       // 배포 선택 대기 중 답변 처리
       const answer = userMessage.trim().toLowerCase();
       const targetMap: Record<string, string> = {
-        "1": "vercel", vercel: "vercel",
-        "2": "railway", railway: "railway",
         "1": "railway", railway: "railway",
         "2": "vercel", vercel: "vercel",
-        "3": "fly", "fly.io": "fly", flyio: "fly",
+        "3": "fly", flyio: "fly",
         "4": "aws", ec2: "aws", ecs: "aws", vps: "vps", ubuntu: "vps",
         "5": "local", "6": "local", 로컬: "local", 개발용: "local",
       };
