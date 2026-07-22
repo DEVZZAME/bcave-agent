@@ -248,6 +248,7 @@ async function selectCommand(): Promise<string | null> {
 const rl = readline.createInterface({
   input: process.stdin,
   output: process.stdout,
+  terminal: true,
 });
 
 // Shift+Tab: mode cycle
@@ -307,13 +308,23 @@ function shortPath(p: string): string {
   return (p.startsWith(home) ? "~" : "") + "/…/" + parts.slice(-2).join("/");
 }
 
+/**
+ * ANSI 이스케이프 시퀀스를 readline 비표시 마커(\x01...\x02)로 감싼다.
+ * readline 이 프롬프트 표시 폭을 계산할 때 ANSI 코드를 폭 0으로 처리하도록 해,
+ * 한글·CJK 입력 시 커서 위치 계산 오류(중복/깨짐)를 방지한다.
+ */
+function rlWrap(s: string): string {
+  return s.replace(/\x1b\[[0-9;]*m/g, (m) => `\x01${m}\x02`);
+}
+
 function prompt(): void {
   const modeInfo = MODE_INFO[mode];
-  const modeTag = modeInfo.color(modeInfo.label);
+  const modeTag = rlWrap(modeInfo.color(modeInfo.label));
   const cwd = shortPath(safeCwd());
   const separator = chalk.dim("─".repeat(getTermWidth()));
   console.log(separator);
-  rl.question(`${modeTag} ${chalk.dim(cwd)} ${chalk.bold(">")} `, (answer) => {
+  // rlWrap 으로 ANSI 코드를 비표시 영역으로 표시 → readline 이 폭을 정확히 계산
+  rl.question(`${modeTag} ${rlWrap(chalk.dim(cwd))} ${rlWrap(chalk.bold(">"))} `, (answer) => {
     handleInput(answer);
   });
 }
