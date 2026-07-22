@@ -79,10 +79,20 @@ function httpPing(port: number, timeoutMs = 1500): Promise<boolean> {
   });
 }
 
-/** 앱을 실제로 띄워 응답하는지 확인(스모크). 시작 명령이 없으면 스킵(통과 처리). */
-async function smokeTest(cwd: string, signal?: AbortSignal): Promise<{ ok: boolean; skipped?: boolean; detail: string; startCmd: string }> {
+/** 실행 중 API 응답이 완료 조건을 만족하는지 판정한다. */
+export function validateApiResponse(pathname: string, status: number, body: string, required = false): string | null {
+  if (required && (status < 200 || status >= 300)) return `GET ${pathname} → HTTP ${status} (필수 헬스 엔드포인트)`;
+  if (!required && status === 404) return null;
+  if (!body.trim()) return `GET ${pathname} → 빈 응답 본문`;
+  try { JSON.parse(body); }
+  catch { return `GET ${pathname} → JSON 파싱 불가 (HTML/텍스트 반환): ${body.slice(0, 120)}`; }
+  return null;
+}
+
+/** 앱을 실제로 띄워 응답하는지 확인(스모크). 시작 명령이 없으면 완료 조건 실패. */
+export async function smokeTest(cwd: string, signal?: AbortSignal): Promise<{ ok: boolean; skipped?: boolean; detail: string; startCmd: string }> {
   const startCmd = detectStartCommand(cwd);
-  if (!startCmd) return { ok: true, skipped: true, detail: "", startCmd: "" };
+  if (!startCmd) return { ok: false, detail: "package.json에 dev/start/serve 서버 실행 스크립트가 없습니다.", startCmd: "" };
   const port = await findFreePort();
   const logs: string[] = [];
   const collect = (b: Buffer) => { logs.push(b.toString()); while (logs.join("").length > 20000) logs.shift(); };
@@ -112,20 +122,20 @@ async function smokeTest(cwd: string, signal?: AbortSignal): Promise<{ ok: boole
 
   const deadline = Date.now() + 35000; // 서버 기동(특히 Next dev)까지 넉넉히
   let up = false;
-  try {
-    while (Date.now() < deadline) {
-      if (signal?.aborted) break;
-      if (exited !== null && exited !== 0) break; // 크래시로 종료
-      for (const p of candidates()) { if (await httpPing(p)) { up = true; break; } }
-      if (up) break;
-      await new Promise((r) => setTimeout(r, 700));
+  let upPort = 0;
+  while (Date.now() < deadline) {
+    if (signal?.aborted) break;
+    if (exited !== null && exited !== 0) break; // 크래시로 종료
+    for (const p of candidates()) {
+      if (await httpPing(p)) { up = true; upPort = p; break; }
     }
-  } finally {
-    process.removeListener("exit", onExit);
-    kill();
+    if (up) break;
+    await new Promise((r) => setTimeout(r, 700));
   }
 
   if (!up) {
+    process.removeListener("exit", onExit);
+    kill();
     const tail = logs.join("").slice(-4000).trim();
     const reason = exited !== null && exited !== 0 ? `서버가 시작 직후 종료됨(exit ${exited})` : "제한 시간 내 HTTP 응답 없음(서버가 기동/바인딩 실패했거나 PORT 를 안 씀)";
     return { ok: false, detail: `[스모크 실패: ${reason}] 시작 명령: ${startCmd}\n서버는 반드시 process.env.PORT 를 사용해 바인딩해야 합니다.\n${tail || "(출력 없음)"}`, startCmd };
@@ -133,11 +143,8 @@ async function smokeTest(cwd: string, signal?: AbortSignal): Promise<{ ok: boole
 
   // ── API 응답 검증: 핵심 엔드포인트가 빈 바디/HTML 오류를 반환하지 않는지 확인 ──
   // "Unexpected end of JSON input" 류 오류는 서버가 빈 응답·HTML·500을 내려줄 때 발생한다.
-  const upPort = candidates().find(p => p > 0) ?? port;
-  const apiChecks: Array<{ path: string; method: string; body?: string }> = [
-    { path: "/api/health", method: "GET" },
-    { path: "/health", method: "GET" },
-    { path: "/api/auth/me", method: "GET" },
+  const apiChecks: Array<{ path: string; method: string; required?: boolean }> = [
+    { path: "/api/health", method: "GET", required: true },
   ];
   const apiIssues: string[] = [];
   for (const check of apiChecks) {
@@ -148,18 +155,19 @@ async function smokeTest(cwd: string, signal?: AbortSignal): Promise<{ ok: boole
         signal: AbortSignal.timeout(3000),
       });
       const text = await res.text();
-      // JSON 파싱 가능 여부 확인 (빈 바디나 HTML 오류 페이지 감지)
-      if (text.trim()) {
-        try { JSON.parse(text); }
-        catch { apiIssues.push(`${check.method} ${check.path} → JSON 파싱 불가 (빈 바디 또는 HTML 반환): ${text.slice(0, 120)}`); }
-      }
-    } catch { /* 엔드포인트 없음은 정상 */ }
+      const issue = validateApiResponse(check.path, res.status, text, check.required);
+      if (issue) apiIssues.push(issue);
+    } catch (err) {
+      if (check.required) apiIssues.push(`${check.method} ${check.path} → 요청 실패: ${(err as Error).message}`);
+    }
   }
 
+  process.removeListener("exit", onExit);
+  kill();
   if (apiIssues.length > 0) {
     return {
       ok: false,
-      detail: `[API 검증 실패] 서버는 기동됐지만 API 응답이 올바르지 않습니다:\n${apiIssues.map(i => "  - " + i).join("\n")}\n\n해결 방법:\n  1. 모든 API 엔드포인트는 항상 JSON을 반환해야 합니다(res.json() 사용).\n  2. 오류 상황에서도 빈 응답(204 외)을 반환하지 마세요.\n  3. Express 전역 오류 핸들러를 추가하세요: app.use((err,req,res,next)=>res.status(500).json({message:err.message}))`,
+      detail: `[API 검증 실패] 서버는 기동됐지만 실제 실행 검증을 통과하지 못했습니다:\n${apiIssues.map(i => "  - " + i).join("\n")}\n\n해결 방법:\n  1. GET /api/health 를 추가하고 2xx JSON을 반환하세요.\n  2. 모든 API 엔드포인트는 오류 상황에서도 JSON을 반환하세요.\n  3. Express 전역 오류 핸들러를 추가하세요: app.use((err,req,res,next)=>res.status(500).json({message:err.message}))`,
       startCmd,
     };
   }
@@ -392,11 +400,12 @@ CHARTS: <script>{{BCAVE_CHARTJS}}</script>, canvas in position:relative;height:2
         "- SQLite 사용 금지 (프로덕션 데이터 무결성/동시성 보장 불가).",
 
       local:
-        "[배포 대상: 로컬 개발용]\n" +
+        "[배포 대상: SQLite 로컬 빠른 검증]\n" +
         "- 백엔드: Node.js + Express + TypeScript (tsx watch로 HMR)\n" +
         "- DB: SQLite — better-sqlite3 직접 사용(Prisma 미사용 권장). 이유: Prisma 7은 SQLite 기본 지원 제거, @prisma/adapter-better-sqlite3 필요해 복잡도 증가.\n" +
         "  better-sqlite3 로 직접 사용하는 패턴: const db = new Database('dev.db'); db.exec('CREATE TABLE IF NOT EXISTS ...');\n" +
-        "  나중에 프로덕션 배포 시 PostgreSQL(pg 패키지)로 교체 필요.\n" +
+        "  마이그레이션 없이 즉시 실행 가능한 초기 스키마와 seed를 제공해 로컬 기능 검증을 우선한다.\n" +
+        "  나중에 프로덕션 배포 시 PostgreSQL(pg 패키지)로 교체 필요. 데이터 계층을 분리해 전환 범위를 제한한다.\n" +
         "- 프론트: React + Vite. vite.config.ts 에 반드시 server.proxy: { '/api': { target: 'http://localhost:3001', changeOrigin: true } }.\n" +
         "- 인증: JWT + bcrypt, HttpOnly 쿠키",
     };
@@ -417,6 +426,11 @@ CHARTS: <script>{{BCAVE_CHARTJS}}</script>, canvas in position:relative;height:2
     // 실제 백엔드가 있는 애플리케이션/서비스 요청 → 단일 정적 HTML 플로우가 아니라 진짜 프로젝트로 만든다.
     const appBuild = isAppBuild(userMessage);
     if (appBuild) this.applicationActive = true;
+    // 최초 요청에 배포 환경 또는 SQLite가 명시되면 스택 선택 뒤 같은 질문을 반복하지 않는다.
+    if (appBuild && !this.selectedDeployTarget) {
+      const explicitTarget = detectDeployTarget(userMessage);
+      if (explicitTarget) this.selectedDeployTarget = explicitTarget;
+    }
 
     // ─── 배포 옵션 선택 ───────────────────────────────────────────────────────
     // 새 앱 빌드 요청이면 배포 대상을 먼저 물어본다 (프로덕션 스택을 결정하기 위해).
@@ -468,7 +482,7 @@ CHARTS: <script>{{BCAVE_CHARTJS}}</script>, canvas in position:relative;height:2
           "  2. **Vercel** ✦ Next.js 풀스택 추천 — PostgreSQL(Neon/Supabase)\n" +
           "  3. **Fly.io** — Docker + PostgreSQL, 리전 선택\n" +
           "  4. **AWS / VPS** — PostgreSQL, 완전 제어\n" +
-          "  5. **로컬만** — SQLite로 시작 (나중에 PostgreSQL 전환 필요)\n\n" +
+          "  5. **SQLite 로컬 빠른 검증** — better-sqlite3로 즉시 실행·검증 (배포 시 PostgreSQL 전환)\n\n" +
           "번호로 답해 주세요.";
         this.pendingDeployChoice = true;
         this.messages.push({ role: "user", content: userMessage });
@@ -581,6 +595,7 @@ CHARTS: <script>{{BCAVE_CHARTJS}}</script>, canvas in position:relative;height:2
           "- Prisma ORM 사용 시 .env에 DATABASE_URL 설정, `prisma migrate dev`로 스키마 관리\n" +
           "- .env.example에 필요한 환경변수를 모두 나열 (실제 값은 .env에, .gitignore에 포함)\n" +
           "- README에 실행 방법, 환경변수 설정, 배포 방법 포함\n" +
+          "- 완료 전 GET /api/health 가 2xx JSON을 반환해야 하며, 실제 dev/start 서버 기동과 API 호출 검증을 반드시 통과해야 함\n" +
           "- 기존 저장소에 스택이 있으면 그대로 따른다\n" +
           "- 단일 인라인 HTML 규칙 적용 안 됨 (정상적인 다중 파일 프로젝트)",
       });
@@ -661,10 +676,14 @@ CHARTS: <script>{{BCAVE_CHARTJS}}</script>, canvas in position:relative;height:2
             continue;
           }
           // A) 완료 직전 자동 검증: 코드가 바뀌었고 검증 명령이 있으면 실행, 실패하면 로그를 되먹여 계속 고친다.
-          if (verifyCmds.length && codeTouched && verifyRounds < this.config.maxVerifyRounds && !signal?.aborted) {
+          if (verifyCmds.length && codeTouched && !signal?.aborted) {
             yield { type: "verify", status: "run", cmd: verifyCmds.join(" && ") };
             const fail = runVerify(verifyCmds, this.cwd);
             if (fail) {
+              if (verifyRounds >= this.config.maxVerifyRounds) {
+                yield { type: "error", message: `빌드/타입 검증에 실패해 완료 처리하지 않았습니다.\n${fail.output}` };
+                return;
+              }
               verifyRounds++;
               codeTouched = false; // 다음 라운드에서 다시 수정하면 재검증
               this.messages.push({ role: "assistant", content: message.content ?? "" });
@@ -683,7 +702,7 @@ CHARTS: <script>{{BCAVE_CHARTJS}}</script>, canvas in position:relative;height:2
           // A-1.5a) SQLite 스키마-INSERT 불일치 검증:
           // CREATE TABLE IF NOT EXISTS 는 기존 테이블이 있으면 건너뜀 → 컬럼 추가 시 INSERT 실패.
           // 서버 코드에서 INSERT 컬럼이 CREATE TABLE 컬럼과 일치하는지 정적 분석으로 확인.
-          if (appBuild && this.config.autoVerify && codeTouched && verifyRounds < this.config.maxVerifyRounds) {
+          if (this.applicationActive && this.config.autoVerify && codeTouched) {
             const serverDir = [path.join(this.cwd, "server"), path.join(this.cwd, "src/server"), this.cwd]
               .find(d => fs.existsSync(d) && fs.statSync(d).isDirectory()) ?? this.cwd;
             const serverFiles = fs.readdirSync(serverDir).filter(f => /\.(ts|js)$/.test(f) && !f.includes(".test."));
@@ -710,7 +729,11 @@ CHARTS: <script>{{BCAVE_CHARTJS}}</script>, canvas in position:relative;height:2
                 }
               }
             }
-            if (schemaIssues.length > 0 && verifyRounds < this.config.maxVerifyRounds) {
+            if (schemaIssues.length > 0) {
+              if (verifyRounds >= this.config.maxVerifyRounds) {
+                yield { type: "error", message: `DB 스키마 검증에 실패해 완료 처리하지 않았습니다.\n${schemaIssues.join("\n")}` };
+                return;
+              }
               verifyRounds++;
               codeTouched = false;
               const detail = `[DB 스키마-INSERT 불일치]\n${schemaIssues.join("\n")}\n\n주의: CREATE TABLE IF NOT EXISTS 는 기존 테이블을 수정하지 않습니다. 컬럼 추가 시 DB 파일을 삭제하거나 ALTER TABLE ADD COLUMN 을 추가해야 합니다.`;
@@ -724,7 +747,7 @@ CHARTS: <script>{{BCAVE_CHARTJS}}</script>, canvas in position:relative;height:2
           // A-1.5b) Vite 프록시 설정 검증: 프론트(Vite)와 백엔드(Express 등)가 분리된 구조에서
           //   vite.config.ts 에 /api 프록시가 없으면 프론트의 fetch('/api/...') 가 백엔드로 안 가고
           //   "Unexpected end of JSON" / CORS 오류가 난다.
-          if (appBuild && this.config.autoVerify && codeTouched) {
+          if (this.applicationActive && this.config.autoVerify && codeTouched) {
             const viteConfig = path.join(this.cwd, "vite.config.ts");
             const viteConfigJs = path.join(this.cwd, "vite.config.js");
             const viteCfgPath = fs.existsSync(viteConfig) ? viteConfig : fs.existsSync(viteConfigJs) ? viteConfigJs : null;
@@ -739,7 +762,11 @@ CHARTS: <script>{{BCAVE_CHARTJS}}</script>, canvas in position:relative;height:2
                   return files.some(f => fs.readFileSync(path.join(src, f), "utf8").includes("fetch('/api"));
                 } catch { return false; }
               })();
-              if (hasBackend && fetchesApi && !hasProxy && verifyRounds < this.config.maxVerifyRounds) {
+              if (hasBackend && fetchesApi && !hasProxy) {
+                if (verifyRounds >= this.config.maxVerifyRounds) {
+                  yield { type: "error", message: "Vite /api 프록시 검증에 실패해 완료 처리하지 않았습니다." };
+                  return;
+                }
                 verifyRounds++;
                 codeTouched = false;
                 const issue = `[Vite 프록시 누락] 프론트(Vite)에서 fetch('/api/...')를 호출하지만 vite.config.ts 에 proxy 설정이 없습니다.\nVite 개발 서버(5173)는 /api 요청을 백엔드(예: 3001)로 전달하지 않아 "Failed to fetch" / "Unexpected end of JSON" 오류가 발생합니다.\n\n${viteCfgPath} 에 다음을 추가하세요:\nserver: { proxy: { '/api': { target: 'http://localhost:3001', changeOrigin: true } } }`;
@@ -752,10 +779,14 @@ CHARTS: <script>{{BCAVE_CHARTJS}}</script>, canvas in position:relative;height:2
             }
           }
           // A-2) 앱이면 서버를 실제로 띄워 HTTP 응답(헬스체크)까지 확인. 실패 시 로그를 되먹여 고친다.
-          if (appBuild && this.config.autoVerify && this.config.smokeTest && codeTouched && verifyRounds < this.config.maxVerifyRounds && !signal?.aborted) {
+          if (this.applicationActive && this.config.autoVerify && this.config.smokeTest && codeTouched && !signal?.aborted) {
             yield { type: "verify", status: "run", cmd: "서버 실행 헬스체크(스모크)" };
             const smoke = await smokeTest(this.cwd, signal);
             if (!smoke.ok) {
+              if (verifyRounds >= this.config.maxVerifyRounds) {
+                yield { type: "error", message: `서비스 실행 검증에 실패해 완료 처리하지 않았습니다.\n${smoke.detail}` };
+                return;
+              }
               verifyRounds++;
               codeTouched = false;
               this.messages.push({ role: "assistant", content: message.content ?? "" });

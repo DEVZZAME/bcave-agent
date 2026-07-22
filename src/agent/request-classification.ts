@@ -33,6 +33,8 @@ export function isDashboardArtifactRequest(message: string): boolean {
 /** 배포 플랫폼이 메시지에 명시됐으면 그 이름을 반환. 없으면 null. */
 export function detectDeployTarget(message: string): string | null {
   const m = message.toLowerCase();
+  // SQLite/better-sqlite3 명시는 빠른 로컬 검증 모드로 취급한다.
+  if (/sqlite|better-sqlite3|로컬\s*(?:db|데이터베이스)|빠른\s*로컬\s*검증/i.test(m)) return "local";
   if (/vercel/i.test(m)) return "vercel";
   if (/railway/i.test(m)) return "railway";
   if (/fly\.io|flyio/i.test(m)) return "fly";

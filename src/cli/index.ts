@@ -989,7 +989,7 @@ async function handleSlashCommand(text: string): Promise<boolean> {
       { label: "Fly.io", dimLabel: "3. Fly.io — Docker + PostgreSQL, 리전 선택 가능" },
       { label: "AWS / ECS  ✦ 대규모·엔터프라이즈", dimLabel: "4. AWS / ECS ✦ 대규모 — EC2/Fargate + RDS" },
       { label: "VPS / 자체 서버  ✦ 고정비용·완전제어", dimLabel: "5. VPS ✦ 고정비용 — Ubuntu + Nginx + Docker Compose" },
-      { label: "로컬 개발용", dimLabel: "6. 로컬 — 지금은 로컬, 나중에 결정" },
+      { label: "SQLite 로컬 빠른 검증", dimLabel: "6. SQLite ✦ 즉시 실행·기능 검증 — better-sqlite3, 나중에 배포 DB 결정" },
     ];
     const answers = ["vercel", "railway", "fly", "aws", "vps", "local"];
     console.log("\n  " + chalk.bold("배포 환경 재선택") + chalk.dim("  (↑↓ 방향키·Enter 선택 · ESC 취소)"));
@@ -1067,14 +1067,14 @@ async function processAgentEvents(initialGen: AsyncGenerator<AgentEvent>): Promi
               { label: "Vercel  ✦ Next.js 풀스택 추천", dimLabel: "2. Vercel ✦ Next.js — PostgreSQL(Neon/Supabase)" },
               { label: "Fly.io", dimLabel: "3. Fly.io — Docker + PostgreSQL, 리전 선택" },
               { label: "AWS / VPS  ✦ 완전 제어", dimLabel: "4. AWS / VPS ✦ 완전제어 — PostgreSQL" },
-              { label: "로컬만 (SQLite)", dimLabel: "5. 로컬만 — SQLite 사용 (배포 시 PostgreSQL 전환 필요)" },
+              { label: "SQLite 로컬 빠른 검증", dimLabel: "5. SQLite ✦ 즉시 실행·기능 검증 — better-sqlite3 (배포 시 PostgreSQL 전환)" },
             ] : [
               { label: "Vercel  ✦ 프론트 중심 추천", dimLabel: "1. Vercel ✦ 추천 — Next.js + PostgreSQL(Neon)" },
               { label: "Railway ✦ 빠른 풀스택 추천", dimLabel: "2. Railway ✦ 추천 — Express + PostgreSQL 올인원" },
               { label: "Fly.io", dimLabel: "3. Fly.io — Docker + PostgreSQL" },
               { label: "AWS / ECS  ✦ 대규모", dimLabel: "4. AWS / ECS — EC2/Fargate + RDS" },
               { label: "VPS / 자체 서버", dimLabel: "5. VPS — Ubuntu + Nginx + Docker Compose" },
-              { label: "로컬 개발용", dimLabel: "6. 로컬 — 지금은 로컬, 나중에 배포 결정" },
+              { label: "SQLite 로컬 빠른 검증", dimLabel: "6. SQLite ✦ 즉시 실행·기능 검증 — better-sqlite3, 나중에 배포 DB 결정" },
             ];
             const answers = isPostStack
               ? ["1", "2", "3", "4", "5"]

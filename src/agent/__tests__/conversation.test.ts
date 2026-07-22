@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { ConversationManager } from "../conversation.js";
+import { ConversationManager, validateApiResponse } from "../conversation.js";
 import { PermissionManager } from "../permissions.js";
 
 const config = {
@@ -8,6 +8,7 @@ const config = {
   refreshToken: "hub-refresh-token",
   userEmail: "user@bcave.co.kr",
   userName: "테스트",
+  llmUrl: "",
   model: "gpt-5.4-mini",
   autoRoute: false,
   modelHeavy: "gpt-5.4-mini",
@@ -20,6 +21,22 @@ const config = {
   apiKey: "",
   baseUrl: "https://api.openai.com/v1",
 };
+
+async function reachAppModel(cm: ConversationManager, request: string, deploy = "5") {
+  const stackQuestion = cm.run(request);
+  expect((await stackQuestion.next()).value).toMatchObject({ type: "text" });
+  await stackQuestion.return(undefined);
+
+  const deployQuestion = cm.run("1");
+  const deployEvent = await deployQuestion.next();
+  if (deployEvent.value?.type === "model") return deployQuestion;
+  expect(deployEvent.value).toMatchObject({ type: "text" });
+  await deployQuestion.return(undefined);
+
+  const app = cm.run(deploy);
+  expect((await app.next()).value).toMatchObject({ type: "model" });
+  return app;
+}
 
 describe("ConversationManager", () => {
   it("can be instantiated", () => {
@@ -36,8 +53,7 @@ describe("ConversationManager", () => {
     // 앱 빌드는 DS 컨텍스트를 주입하지 않는다 — 주입 시 모델이 write_file에 design_system
     // 필드를 포함해 body/app_script 강제 루프에 빠지던 문제를 방지한다.
     const cm = new ConversationManager(config, new PermissionManager("yolo"), process.cwd());
-    const run = cm.run("관리자 웹 서비스를 만들어줘");
-    await run.next();
+    const run = await reachAppModel(cm, "관리자 웹 서비스를 만들어줘");
 
     const hasAppDsContext = cm.getHistory().some((message) =>
       message.role === "system" && typeof message.content === "string" &&
@@ -54,8 +70,7 @@ describe("ConversationManager", () => {
 
   it("does NOT inject design system context even with an explicit system name in app builds", async () => {
     const cm = new ConversationManager(config, new PermissionManager("yolo"), process.cwd());
-    const run = cm.run("AXIS 디자인으로 관리자 서비스를 만들어줘");
-    await run.next();
+    const run = await reachAppModel(cm, "AXIS 디자인으로 관리자 서비스를 만들어줘");
 
     const hasDsContext = cm.getHistory().some((message) =>
       message.role === "system" && String(message.content).includes("모든 웹 UI는 AXIS 디자인 시스템을 반드시 사용"),
@@ -64,13 +79,13 @@ describe("ConversationManager", () => {
     await run.return(undefined);
   });
 
-  it("uses the configured system for a UI artifact without asking again", async () => {
+  it("asks for a design system before a standalone dashboard", async () => {
     const cm = new ConversationManager(config, new PermissionManager("yolo"), process.cwd());
-    const run = cm.run("운영 대시보드 화면을 만들어줘");
-
-    const first = await run.next();
-
-    expect(first.value).toMatchObject({ type: "model" });
+    const choose = cm.run("운영 대시보드 화면을 만들어줘");
+    expect((await choose.next()).value).toMatchObject({ type: "text" });
+    await choose.return(undefined);
+    const run = cm.run("1");
+    expect((await run.next()).value).toMatchObject({ type: "model" });
     expect(cm.getHistory().some((message) =>
       message.role === "system" && String(message.content).includes("BCAVE 디자인 시스템 강제 파이프라인"),
     )).toBe(true);
@@ -93,8 +108,7 @@ describe("ConversationManager", () => {
 
   it("does NOT inject DS context for multi-turn app builds either", async () => {
     const cm = new ConversationManager(config, new PermissionManager("yolo"), process.cwd());
-    const r1 = cm.run("관리자 웹 서비스를 만들어줘");
-    await r1.next();
+    const r1 = await reachAppModel(cm, "관리자 웹 서비스를 만들어줘");
     await r1.return(undefined);
 
     const r2 = cm.run("AXIS 디자인시스템으로 서비스를 구현해줘");
@@ -110,7 +124,10 @@ describe("ConversationManager", () => {
 
   it("standalone dashboard request still uses DS pipeline (not affected by app build fix)", async () => {
     const cm = new ConversationManager(config, new PermissionManager("yolo"), process.cwd());
-    const run = cm.run("매출 분석 대시보드를 만들어줘");
+    const choose = cm.run("매출 분석 대시보드를 만들어줘");
+    expect((await choose.next()).value).toMatchObject({ type: "text" });
+    await choose.return(undefined);
+    const run = cm.run("1");
     const first = await run.next();
     // 대시보드 단독 요청은 DS 강제 파이프라인을 사용한다
     expect(first.value).toMatchObject({ type: "model" });
@@ -118,5 +135,24 @@ describe("ConversationManager", () => {
       m.role === "system" && String(m.content).includes("BCAVE 디자인 시스템 강제 파이프라인"),
     )).toBe(true);
     await run.return(undefined);
+  });
+
+  it("treats an explicit SQLite service request as local quick validation", async () => {
+    const cm = new ConversationManager(config, new PermissionManager("yolo"), process.cwd());
+    const run = await reachAppModel(cm, "SQLite로 빠르게 검증할 관리 서비스를 만들어줘");
+
+    const appContext = cm.getHistory().find((m) =>
+      m.role === "system" && String(m.content).includes("[APPLICATION_CONTEXT]"),
+    );
+    expect(String(appContext?.content)).toContain("SQLite 로컬 빠른 검증");
+    expect(String(appContext?.content)).toContain("GET /api/health");
+    await run.return(undefined);
+  });
+
+  it("requires a successful JSON health response before an application can complete", () => {
+    expect(validateApiResponse("/api/health", 200, '{"ok":true}', true)).toBeNull();
+    expect(validateApiResponse("/api/health", 404, '{"message":"missing"}', true)).toContain("HTTP 404");
+    expect(validateApiResponse("/api/health", 200, "<html>not json</html>", true)).toContain("JSON 파싱 불가");
+    expect(validateApiResponse("/api/health", 200, "", true)).toContain("빈 응답");
   });
 });
