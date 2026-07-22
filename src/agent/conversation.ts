@@ -121,11 +121,54 @@ function sourceFiles(dir: string): string[] {
   return out;
 }
 
+function codeFiles(dir: string): string[] {
+  if (!fs.existsSync(dir)) return [];
+  const out: string[] = [];
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (["node_modules", "dist", "build", ".next", ".git"].includes(entry.name)) continue;
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) out.push(...codeFiles(full));
+    else if (/\.(?:ts|tsx|js|jsx|mjs|cjs)$/.test(entry.name) && !/\.test\./.test(entry.name)) out.push(full);
+  }
+  return out;
+}
+
+/** 화면의 API 요청 방식과 서버 라우트(GET/POST/PUT/DELETE)가 일치하는지 대조한다. */
+export function auditApiContracts(cwd: string): string[] {
+  const issues: string[] = [];
+  const serverRoots = [path.join(cwd, "server"), path.join(cwd, "src", "server")];
+  const serverRoutes = new Map<string, Set<string>>();
+  for (const file of serverRoots.flatMap(codeFiles)) {
+    const source = fs.readFileSync(file, "utf8");
+    for (const match of source.matchAll(/\b(?:app|router)\.(get|post|put|patch|delete)\s*\(\s*['"](\/api\/[^'"]+)['"]/gi)) {
+      const method = match[1].toUpperCase();
+      const endpoint = match[2];
+      const methods = serverRoutes.get(endpoint) ?? new Set<string>();
+      methods.add(method);
+      serverRoutes.set(endpoint, methods);
+    }
+  }
+  for (const file of codeFiles(path.join(cwd, "src")).filter((name) => !/[\\/]server[\\/]/.test(name))) {
+    const source = fs.readFileSync(file, "utf8");
+    for (const match of source.matchAll(/\b(?:fetch|api)\s*\(\s*(['"])(\/api\/[^'"]+)\1\s*(?:,\s*\{([^}]{0,600})\})?/g)) {
+      const endpoint = match[2];
+      const options = match[3] ?? "";
+      const method = options.match(/\bmethod\s*:\s*['"](GET|POST|PUT|PATCH|DELETE)['"]/i)?.[1]?.toUpperCase() ?? "GET";
+      const allowed = serverRoutes.get(endpoint);
+      if (allowed && !allowed.has(method)) {
+        issues.push(`${path.relative(cwd, file)}: ${endpoint} 요청이 ${method}로 되어 있지만 서버는 ${[...allowed].join("/")}만 허용합니다.`);
+      }
+    }
+  }
+  return [...new Set(issues)];
+}
+
 /** 보이는 기능과 실제 구현/완성 주장이 일치하는지 검사한다. */
 export function auditAppCompleteness(cwd: string): string[] {
   const issues = sourceFiles(path.join(cwd, "src")).flatMap((file) =>
     auditUiSource(fs.readFileSync(file, "utf8"), path.relative(cwd, file)),
   );
+  issues.push(...auditApiContracts(cwd));
   const readmePath = path.join(cwd, "README.md");
   const readme = fs.existsSync(readmePath) ? fs.readFileSync(readmePath, "utf8") : "";
   if (/\bCRUD\b/i.test(readme)) {
@@ -285,6 +328,7 @@ export class ConversationManager {
 ARTIFACT vs APP: Real service/app (backend+API+DB+auth) → multi-file project. Standalone dashboard/report/landing → single self-contained HTML. Never fake data with static arrays.
 DB RULES: (1) SQLite: use better-sqlite3 DIRECTLY (not Prisma) — Prisma 7 removed native SQLite, the adapter(@prisma/adapter-better-sqlite3) is complex and error-prone. (2) PostgreSQL: use Prisma with provider="postgresql" OR pg package directly. NEVER mix SQLite adapter with Prisma 7. (3) Non-local deployments (Railway/Vercel/Fly/AWS): ALWAYS PostgreSQL — no SQLite regardless of environment. Get dev DATABASE_URL from Neon/Supabase free tier. (4) Vite+Express: ALWAYS add proxy in vite.config.ts: server:{proxy:{'/api':{target:'http://localhost:PORT',changeOrigin:true}}} — without this all fetch('/api') calls go to Vite port instead of backend.
 API CONTRACT (prevents "Unexpected end of JSON input"): (1) Every API endpoint MUST always return JSON — use res.json() even for errors, NEVER res.end() or res.send() with empty body except 204. (2) Add a global error handler: app.use((err,req,res,next)=>{res.status(err.status||500).json({message:err.message||'서버 오류'})}). (3) Frontend fetch MUST check response.ok before .json(): const r=await fetch(url,opts); if(!r.ok){const e=await r.json().catch(()=>({message:'서버 오류'})); throw new Error(e.message);} return r.json(). (4) Wrap every fetch call in try/catch and show the error message to the user (never swallow errors silently).
+REQUEST METHOD CONTRACT: Every frontend request method must exactly match its backend route. Calls without an explicit method are GET. Login/create/logout/action endpoints commonly require POST; update requires PUT/PATCH; delete requires DELETE. Before completion, compare every fetch/API wrapper call against the registered backend route method and repair every mismatch.
 COMPLETENESS: Every visible button, menu, tab, link, dropdown, search/filter, form, and table row action MUST work. Do not render future/placeholder navigation as interactive controls. Never show fabricated dates, percentages, trends, counts, statuses, or "auto saved" labels; derive them from real data/state. Do not claim CRUD unless create/read/update/delete all exist in both UI and API. Before completion, inventory every visible interactive element and exercise its connected path.
 UI: Follow existing stack. No stack → Tailwind CSS + shadcn/ui default. No arbitrary hex/inline styles.
 UI QUALITY: (1) contrast≥4.5:1, alt text, keyboard nav, aria-labels, no remove focus rings (2) tap≥44×44px, loading feedback, no hover-only (3) SVG icons, Tailwind tokens (4) mobile-first, viewport meta, no horizontal scroll (5) body≥16px/1.5lh, no gray-on-gray (6) animation 150-300ms, prefers-reduced-motion (7) visible labels, inline errors, disable submit on load (8) predictable back, bottom-nav≤5.

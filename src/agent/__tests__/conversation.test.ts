@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { auditUiSource, ConversationManager, validateApiResponse } from "../conversation.js";
+import { auditApiContracts, auditUiSource, ConversationManager, validateApiResponse } from "../conversation.js";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { PermissionManager } from "../permissions.js";
 
 const config = {
@@ -176,5 +179,20 @@ describe("ConversationManager", () => {
       expect.stringContaining("고정 증감률"),
       expect.stringContaining("고정 문구"),
     ]));
+  });
+
+  it("detects frontend and backend request method mismatches", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bcave-api-audit-"));
+    try {
+      fs.mkdirSync(path.join(dir, "src"));
+      fs.mkdirSync(path.join(dir, "server"));
+      fs.writeFileSync(path.join(dir, "src", "main.tsx"), `api('/api/auth/logout')`);
+      fs.writeFileSync(path.join(dir, "server", "index.ts"), `app.post('/api/auth/logout', handler)`);
+      expect(auditApiContracts(dir)).toEqual([
+        expect.stringContaining("GET로 되어 있지만 서버는 POST만 허용"),
+      ]);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
