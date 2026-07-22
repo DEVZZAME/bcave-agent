@@ -285,7 +285,16 @@ CHARTS: <script>{{BCAVE_CHARTJS}}</script>, canvas in position:relative;height:2
       for (let j = idx; j < msgs.length; j++) s += size(msgs[j]);
       if (s <= BUDGET) { chosen = idx; break; }
     }
-    this.messages = [system, ...msgs.slice(chosen)];
+    // assistant 텍스트가 과도하게 길면 앞부분을 잘라 히스토리 토큰을 줄인다.
+    // (계획·설명·재언급이 쌓여 다음 턴 입력 토큰을 낭비하는 주요 원인)
+    const MAX_ASSISTANT_TEXT = 800;
+    const trimmed = msgs.slice(chosen).map((m) => {
+      if ((m as { role: string }).role !== "assistant") return m;
+      const c = (m as { content?: unknown }).content;
+      if (typeof c !== "string" || c.length <= MAX_ASSISTANT_TEXT) return m;
+      return { ...m, content: c.slice(0, MAX_ASSISTANT_TEXT) + " …[생략]" };
+    });
+    this.messages = [system, ...trimmed];
   }
 
   /** 배포 플랫폼별 프로덕션 스택 가이드 */
@@ -522,21 +531,12 @@ CHARTS: <script>{{BCAVE_CHARTJS}}</script>, canvas in position:relative;height:2
       this.messages.push({
         role: "system",
         content:
-          "[실질적인 개발/구현 작업이다. 다음 순서로 진행한다:\n" +
-          "1) 계획: (a) 목표 1~2줄, (b) 만들거나 수정할 파일 목록, (c) 순서 있는 체크리스트.\n" +
-          "2) 구현: 한 번에 한 조각씩. 각 조각이 끝나면 build/typecheck로 정확성 확인.\n" +
-          "3) 연결 검증(핵심): 새 파일/기능을 만든 후 반드시 기존 코드에 실제로 연결됐는지 확인한다.\n" +
-          "   - 새 페이지/화면: 라우터 파일에 route가 추가됐는가? 네비게이션에 링크가 있는가?\n" +
-          "   - 새 API 엔드포인트: 프론트에서 실제로 fetch 호출하는가? 에러 처리가 있는가?\n" +
-          "   - 새 컴포넌트: import해서 실제로 렌더하는 곳이 있는가?\n" +
-          "   - DB 스키마 변경: migration이 적용됐는가? seed가 필요한가?\n" +
-          "   연결이 빠진 채로 '완료'라고 하지 말 것 — 만든 것이 실제로 동작하는 경로까지가 완료다.\n" +
-          "4) UI 품질(화면이 있을 때): 44×44px 터치 타깃, 4.5:1 대비, 인라인 에러, 로딩 피드백, SVG 아이콘(이모지 금지), 모바일 반응형.\n" +
-          "5) 완료 후:\n" +
-          "   a) '지금 바로 실행해드릴까요?' 한 줄로 물어본다. '응/예/실행해줘'이면 dev 서버를 직접 기동하고 접속 URL을 알려준다.\n" +
-          "   b) 로컬 실행이 확인되면 '배포도 진행할까요?' 한 줄로 물어본다. '응'이면 배포 환경 선택을 안내한다 (Vercel/Railway/Fly/AWS/VPS). 배포 선택 시 해당 환경에 맞게 설정 파일을 추가한다.\n" +
-          "   사용자가 터미널에 익숙하지 않을 수 있으므로 실행/배포 명령을 직접 수행한다.\n" +
-          "6) 완료 응답: 만든 파일, route/link, 실행 명령 1줄만. 불필요한 설명 생략.]",
+          "[DEV] 계획은 내부적으로 세우되 채팅에 출력하지 않는다.\n" +
+          "작업: 한 번에 한 파일씩 구현 → build/typecheck 확인 → 연결 검증(route/import/fetch).\n" +
+          "연결 검증: 새 파일은 반드시 router/nav/server에 등록됐는지 직접 확인 후 완료 처리.\n" +
+          "UI: 44px 터치, 4.5:1 대비, 인라인 에러, 반응형.\n" +
+          "완료 응답: 만든 파일 목록 + '실행할까요?' 한 줄. 설명·계획·재언급 금지.\n" +
+          "실행 요청 시: dev 서버 직접 기동 → URL 확인 → '배포할까요?' 한 줄.]",
       });
     }
     this.messages.push({ role: "user", content: userMessage });
