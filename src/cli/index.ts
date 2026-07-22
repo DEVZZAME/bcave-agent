@@ -8,6 +8,7 @@ import type { BcaveConfig } from "../config/config.js";
 import { hubLogin, hubLogout, hubListModels, hubUsage, type HubModel } from "../auth/hub.js";
 import { newSessionId, saveSession, listSessions, loadSession } from "../session/store.js";
 import fs from "node:fs";
+import os from "node:os";
 import { execSync, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import nodePath from "node:path";
@@ -269,10 +270,30 @@ function getTermWidth(): number {
   return process.stdout.columns || 80;
 }
 
+/** 현재 디렉토리를 안전하게 반환. 삭제된 경우 홈 디렉토리로 폴백. */
+function safeCwd(): string {
+  try { return process.cwd(); } catch { return os.homedir(); }
+}
+
+/** 터미널 폭을 고려해 경로를 짧게 줄인다. 홈은 ~로, 긴 경로는 끝 2단계만 표시. */
+function shortPath(p: string): string {
+  const home = os.homedir();
+  const rel = p.startsWith(home) ? "~" + p.slice(home.length) : p;
+  const cols = getTermWidth();
+  // prompt 고정부분("Yolo mode " + " > ") 폭 계산 후 남은 공간
+  const fixed = MODE_INFO[mode].label.length + 4; // "Yolo mode " + " > "
+  const maxPath = Math.max(20, cols - fixed - 5);
+  if (dispWidth(rel) <= maxPath) return rel;
+  // 너무 길면 끝 2단계만
+  const parts = p.split("/");
+  const short = "…/" + parts.slice(-2).join("/");
+  return short;
+}
+
 function prompt(): void {
   const modeInfo = MODE_INFO[mode];
   const modeTag = modeInfo.color(modeInfo.label);
-  const cwd = process.cwd();
+  const cwd = shortPath(safeCwd());
   const separator = chalk.dim("─".repeat(getTermWidth()));
   console.log(separator);
   rl.question(`${modeTag} ${chalk.dim(cwd)} ${chalk.bold(">")} `, (answer) => {
@@ -449,7 +470,7 @@ let cm: ConversationManager | null = null;
 
 function rebuildCM(): void {
   const pm = new PermissionManager(mode);
-  cm = new ConversationManager(config, pm, process.cwd());
+  cm = new ConversationManager(config, pm, safeCwd());
 }
 
 // ─── 세션(대화) 저장/복원 ───────────────────────────────
@@ -467,7 +488,7 @@ function persistSession(userMsg: string): void {
     id: sessionId,
     createdAt: sessionCreatedAt,
     updatedAt: new Date().toISOString(),
-    cwd: process.cwd(),
+    cwd: safeCwd(),
     title: sessionTitle,
     turns: sessionTurns,
     messages: cm.getHistory(),
@@ -949,8 +970,11 @@ async function processAgentEvents(initialGen: AsyncGenerator<AgentEvent>): Promi
   enterWorkInput();
   startSpinner();
   try {
+    // autoReply 가 설정되면 현재 루프를 break 하고 새 gen 으로 재시작한다.
+    // (for-await 안에서 gen 을 재할당해도 이터레이터는 바뀌지 않으므로 while 로 감쌈)
+    outer: while (true) {
     for await (const event of gen) {
-      if (aborted) break;
+      if (aborted) break outer;
       stopSpinner();
 
       switch (event.type) {
@@ -1047,19 +1071,27 @@ async function processAgentEvents(initialGen: AsyncGenerator<AgentEvent>): Promi
           break;
 
         case "done":
-          // 셀렉터로 선택한 답변이 있으면 자동으로 다음 턴 시작
           if (autoReply) {
-            const reply = autoReply;
-            autoReply = "";
-            console.log("  " + chalk.dim(`↳ 선택: ${reply}`));
-            gen = cm!.run(reply, abortController?.signal);
-            startSpinner();
+            // 셀렉터 선택 답변 → for-await 를 break 하고 while 에서 새 gen 으로 재시작
+            break outer;
           }
           break;
       }
 
       if (!aborted && event.type !== "done") startSpinner();
+    } // end for-await
+
+    // for-await 가 끝난 뒤 autoReply 가 있으면 새 턴 실행
+    if (autoReply && !aborted) {
+      const reply = autoReply;
+      autoReply = "";
+      console.log("  " + chalk.dim(`↳ 선택: ${reply}`));
+      gen = cm!.run(reply, abortController?.signal);
+      startSpinner();
+      continue; // while 재시작
     }
+    break; // autoReply 없음 → 정상 종료
+    } // end while outer
   } finally {
     stopSpinner();
     exitWorkInput();
@@ -1221,7 +1253,7 @@ async function main(): Promise<void> {
   const who = isLoggedIn(config) ? `  ·  ${config.userName || config.userEmail}` : "";
   const modelLabel = config.autoRoute ? `자동(${config.modelHeavy} · ${config.modelLight})` : config.model;
 
-  console.log("  " + chalk.dim(`v0.1.0  ·  ${modelLabel}  ·  ${process.cwd()}${who}`));
+  console.log("  " + chalk.dim(`v0.1.0  ·  ${modelLabel}  ·  ${safeCwd()}${who}`));
   console.log("  " + chalk.dim("Shift+Tab 모드 전환  ·  /help 명령어  ·  Ctrl+C 종료"));
   console.log("");
 

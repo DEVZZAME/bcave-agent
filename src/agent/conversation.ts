@@ -374,24 +374,10 @@ CHARTS: <script>{{BCAVE_CHARTJS}}</script>, canvas in position:relative;height:2
       const explicitTarget = detectDeployTarget(userMessage);
       if (explicitTarget) {
         this.selectedDeployTarget = explicitTarget;
-        this.pendingDeployChoice = false;
-      } else if (!this.pendingDeployChoice) {
-        // 처음 앱 빌드 요청 → 배포 옵션을 먼저 묻고 턴 종료
-        const q =
-          "어떤 환경에 배포할 예정인가요? 배포 대상에 따라 DB·스택·설정이 달라집니다.\n\n" +
-          "  1. **Vercel** ✦ 프론트 중심 서비스 추천 — Next.js 풀스택, PostgreSQL(Neon/Supabase), git push 자동 배포, 무료 플랜 있음\n" +
-          "  2. **Railway** ✦ 빠른 풀스택 배포 추천 — Node.js + Express + PostgreSQL 올인원, 설정 최소, 가장 빠른 시작\n" +
-          "  3. **Fly.io** — Docker 기반, PostgreSQL, 리전 선택 가능, 중간 복잡도\n" +
-          "  4. **AWS / ECS** ✦ 대규모·사내 인프라 추천 — EC2·Fargate, RDS PostgreSQL, 최대 제어·확장성\n" +
-          "  5. **VPS / 자체 서버** ✦ 고정 비용·완전 제어 추천 — Ubuntu + Nginx + Docker Compose, 월 고정 비용\n" +
-          "  6. **로컬 개발용** — 지금은 로컬에서만 실행, 배포는 나중에 결정\n\n" +
-          "번호나 이름으로 답해 주세요. (예: `2` 또는 `railway`)";
-        this.pendingDeployChoice = true;
-        this.messages.push({ role: "user", content: userMessage });
-        this.messages.push({ role: "assistant", content: q });
-        yield { type: "text", content: q };
-        yield { type: "done" };
-        return;
+      } else {
+        // 배포 환경이 명시되지 않으면 로컬로 먼저 만든다.
+        // 구현 완료 후 플래너 "완료 후" 단계에서 배포 옵션을 제안한다.
+        this.selectedDeployTarget = "local";
       }
     } else if (this.pendingDeployChoice && !appBuild) {
       // 배포 선택 대기 중 답변 처리
@@ -496,8 +482,11 @@ CHARTS: <script>{{BCAVE_CHARTJS}}</script>, canvas in position:relative;height:2
           "   - DB 스키마 변경: migration이 적용됐는가? seed가 필요한가?\n" +
           "   연결이 빠진 채로 '완료'라고 하지 말 것 — 만든 것이 실제로 동작하는 경로까지가 완료다.\n" +
           "4) UI 품질(화면이 있을 때): 44×44px 터치 타깃, 4.5:1 대비, 인라인 에러, 로딩 피드백, SVG 아이콘(이모지 금지), 모바일 반응형.\n" +
-          "5) 완료 후: 구현이 끝나면 '지금 바로 실행해드릴까요?' 한 줄로 물어본다. 사용자가 '응/예/실행해줘'라고 하면 dev 서버를 백그라운드로 기동하고 접속 URL을 알려준다. 사용자가 터미널에 익숙하지 않을 수 있으므로 실행 명령을 직접 대신 수행한다.\n" +
-          "6) 완료 응답: 만든 파일, 추가한 route/link, 실행 명령 1줄만. 불필요한 설명 생략.]",
+          "5) 완료 후:\n" +
+          "   a) '지금 바로 실행해드릴까요?' 한 줄로 물어본다. '응/예/실행해줘'이면 dev 서버를 직접 기동하고 접속 URL을 알려준다.\n" +
+          "   b) 로컬 실행이 확인되면 '배포도 진행할까요?' 한 줄로 물어본다. '응'이면 배포 환경 선택을 안내한다 (Vercel/Railway/Fly/AWS/VPS). 배포 선택 시 해당 환경에 맞게 설정 파일을 추가한다.\n" +
+          "   사용자가 터미널에 익숙하지 않을 수 있으므로 실행/배포 명령을 직접 수행한다.\n" +
+          "6) 완료 응답: 만든 파일, route/link, 실행 명령 1줄만. 불필요한 설명 생략.]",
       });
     }
     this.messages.push({ role: "user", content: userMessage });
