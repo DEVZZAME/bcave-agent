@@ -102,6 +102,12 @@ describe("ConversationManager", () => {
     expect(cm.getHistory().some((message) =>
       message.role === "system" && String(message.content).startsWith("[PRESENTATION_CONTEXT]"),
     )).toBe(true);
+    const presentationContext = cm.getHistory().find((message) =>
+      message.role === "system" && String(message.content).startsWith("[PRESENTATION_CONTEXT]"),
+    );
+    expect(String(presentationContext?.content)).toContain("원본 파일 전체를 작업 파일로 복사");
+    expect(String(presentationContext?.content)).toContain("새 슬라이드를 추가하지 않는다");
+    expect(String(presentationContext?.content)).toContain("원본 안내 문구가 모두 교체됐는지 검사");
     await run.return(undefined);
   });
 

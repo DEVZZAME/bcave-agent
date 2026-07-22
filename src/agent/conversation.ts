@@ -15,6 +15,22 @@ import { designRules, designSystemDir, designSystemNames, hasDesignSystem, isUiA
 import { hubRefresh } from "../auth/hub.js";
 
 const CODE_EXT = /\.(ts|tsx|js|jsx|mjs|cjs|vue|svelte|py|go|rs|java|rb|php|cs|kt|swift|scss|sass|less|css|json|astro)$/i;
+const PRESENTATION_TEMPLATE_PATH = "/Users/bcave/Desktop/bcave_ppt_template.pptx";
+
+function pptxSlideCount(filePath: string): number {
+  if (!fs.existsSync(filePath)) return 0;
+  const result = spawnSync("unzip", ["-Z1", filePath], { encoding: "utf8", timeout: 10_000 });
+  if (result.status !== 0) return 0;
+  return String(result.stdout).split("\n").filter((name) => /^ppt\/slides\/slide\d+\.xml$/.test(name.trim())).length;
+}
+
+function pptxRetainedGuideText(filePath: string): string[] {
+  const result = spawnSync("unzip", ["-p", filePath, "ppt/slides/slide*.xml"], { encoding: "utf8", timeout: 10_000, maxBuffer: 16 * 1024 * 1024 });
+  if (result.status !== 0) return ["PPTX 내부 슬라이드를 읽을 수 없음"];
+  const xml = String(result.stdout);
+  const guidePhrases = ["제목을 작성해주세요", "목차를 적어주세요", "간지로 활용하시면 됩니다", "PPT 작성가이드", "내용/아이콘 수정"];
+  return guidePhrases.filter((phrase) => xml.includes(phrase));
+}
 
 /** 이 저장소의 검증(빌드/타입체크) 명령을 감지 — package.json 스크립트 우선, 없으면 tsconfig 로 tsc. */
 function detectVerifyCommands(cwd: string, override: string[]): string[] {
@@ -555,8 +571,8 @@ CHARTS: <script>{{BCAVE_CHARTJS}}</script>, canvas in position:relative;height:2
     // 실제 백엔드가 있는 애플리케이션/서비스 요청 → 단일 정적 HTML 플로우가 아니라 진짜 프로젝트로 만든다.
     const appBuild = isAppBuild(userMessage);
     const presentationRequest = isPresentationRequest(userMessage);
-    const initialPresentations = new Set<string>((() => {
-      try { return fs.readdirSync(this.cwd).filter((name) => /\.pptx$/i.test(name)); } catch { return []; }
+    const initialPresentations = new Map<string, number>((() => {
+      try { return fs.readdirSync(this.cwd).filter((name) => /\.pptx$/i.test(name)).map((name): [string, number] => [name, fs.statSync(path.join(this.cwd, name)).mtimeMs]); } catch { return []; }
     })());
     if (appBuild) this.applicationActive = true;
     // 최초 요청에 배포 환경 또는 SQLite가 명시되면 스택 선택 뒤 같은 질문을 반복하지 않는다.
@@ -706,10 +722,12 @@ CHARTS: <script>{{BCAVE_CHARTJS}}</script>, canvas in position:relative;height:2
     if (presentationRequest) {
       this.replaceSystemContext("[PRESENTATION_CONTEXT]",
         "[PRESENTATION_CONTEXT]\n이 요청의 산출물은 PowerPoint 프레젠테이션(.pptx)이다. HTML, 대시보드, 웹페이지를 만들지 않는다. " +
-        "첨부/지정 문서의 내용을 요약·구조화하고 `/Users/bcave/Desktop/bcave_ppt_template.pptx`를 시각적 원본으로 사용한다. " +
-        "원본의 슬라이드 크기, 마스터, 색상, 글꼴, 로고, 여백, 제목/본문 위계를 유지한 새 PPTX를 현재 폴더에 만든다. " +
+        `첨부/지정 문서의 내용을 요약·구조화하고 \`${PRESENTATION_TEMPLATE_PATH}\`를 편집 원본으로 사용한다. ` +
+        `원본 파일 전체를 작업 파일로 복사하고, 그 안의 ${pptxSlideCount(PRESENTATION_TEMPLATE_PATH)}개 슬라이드에 있는 기존 텍스트와 표 내용만 교체한다. 원본 안내 내용이 든 1~10장을 남긴 채 뒤에 새 슬라이드를 추가하지 않는다. ` +
+        "slides.add_slide / presentation.slides.add처럼 새 슬라이드를 추가하거나 빈 레이아웃에 새 도형을 그려 재디자인하지 않는다. " +
+        "원본의 슬라이드 수, 순서, 배경, 마스터, 색상, 글꼴, 로고, 도형 위치, 여백, 제목/본문 위계를 그대로 유지한다. 내용이 길면 글자를 줄이지 말고 문장을 요약해 기존 영역에 맞춘다. " +
         "필요하면 생성 스크립트(.js/.mjs/.py)를 작성하고 실행하되 최종 산출물은 반드시 실제로 열리는 .pptx여야 한다. " +
-        "원문에 없는 사실을 채우지 말고, 완료 전 생성 파일의 존재와 ZIP/PPTX 형식을 검사한다.");
+        "원문에 없는 사실을 채우지 말고, 완료 전 결과 슬라이드 수가 원본과 같은지, `제목을 작성해주세요` 같은 원본 안내 문구가 모두 교체됐는지 검사한다.");
     }
     if (appBuild || this.applicationActive) {
       const deployTarget = this.selectedDeployTarget || "local";
@@ -813,20 +831,31 @@ CHARTS: <script>{{BCAVE_CHARTJS}}</script>, canvas in position:relative;height:2
           if (presentationRequest && !signal?.aborted) {
             const created = (() => {
               try {
-                return fs.readdirSync(this.cwd).filter((name) => /\.pptx$/i.test(name) && !initialPresentations.has(name)).find((name) => {
+                return fs.readdirSync(this.cwd).filter((name) => /\.pptx$/i.test(name) && (!initialPresentations.has(name) || fs.statSync(path.join(this.cwd, name)).mtimeMs > (initialPresentations.get(name) ?? 0))).find((name) => {
                   const bytes = fs.readFileSync(path.join(this.cwd, name));
                   return bytes.length > 4 && bytes[0] === 0x50 && bytes[1] === 0x4b;
                 });
               } catch { return undefined; }
             })();
-            if (!created) {
+            const createdPath = created ? path.join(this.cwd, created) : "";
+            const templateSlides = pptxSlideCount(PRESENTATION_TEMPLATE_PATH);
+            const outputSlides = createdPath ? pptxSlideCount(createdPath) : 0;
+            const retainedGuideText = createdPath ? pptxRetainedGuideText(createdPath) : [];
+            const invalidReason = !created
+              ? "새 PPTX 파일이 생성되지 않았습니다."
+              : outputSlides !== templateSlides
+                ? `결과가 ${outputSlides}장입니다. 원본 ${templateSlides}장을 편집해야 하며 슬라이드를 추가하거나 원본 안내 슬라이드를 남기면 안 됩니다.`
+                : retainedGuideText.length
+                  ? `원본 안내 문구가 교체되지 않았습니다: ${retainedGuideText.join(", ")}`
+                  : "";
+            if (invalidReason) {
               if (presentationRepairRounds >= this.config.maxVerifyRounds) {
-                yield { type: "error", message: "PowerPoint 파일이 생성되지 않아 완료 처리하지 않았습니다." };
+                yield { type: "error", message: `PowerPoint 템플릿 적용을 확인하지 못해 완료 처리하지 않았습니다.\n${invalidReason}` };
                 return;
               }
               presentationRepairRounds++;
               this.messages.push({ role: "assistant", content: message.content ?? "" });
-              this.messages.push({ role: "user", content: "[완료 차단] 요청한 산출물은 PPTX입니다. HTML을 만들거나 설명만 하지 말고 BCAVE PPT 원본 양식을 사용해 현재 폴더에 새 .pptx 파일을 실제로 생성하고 형식을 확인하세요." });
+              this.messages.push({ role: "user", content: `[완료 차단] ${invalidReason}\nBCAVE PPT 원본의 기존 슬라이드를 직접 복제·편집하고 텍스트만 교체하세요. 새 디자인 슬라이드를 뒤에 추가하지 마세요.` });
               lastText = "";
               continue;
             }
@@ -1081,8 +1110,11 @@ CHARTS: <script>{{BCAVE_CHARTJS}}</script>, canvas in position:relative;height:2
             this.permissions.approve(category);
           }
 
+          const presentationScriptAddsSlides = presentationRequest && name === "write_file" && typeof args.content === "string" && /(?:slides\s*\.\s*add_slide|slides\s*\.\s*add\s*\()/i.test(args.content);
           const result = presentationRequest && name === "write_file" && typeof args.path === "string" && /\.html?$/i.test(args.path)
             ? "[차단됨] PowerPoint 요청에는 HTML/대시보드를 만들 수 없습니다. BCAVE PPT 원본 양식으로 .pptx를 생성하세요."
+            : presentationScriptAddsSlides
+              ? "[차단됨] 템플릿 뒤에 새 슬라이드를 추가하는 코드는 사용할 수 없습니다. 원본 슬라이드 수와 레이아웃을 유지하고 기존 요소의 텍스트만 교체하세요."
             : await executeTool(name, args, this.cwd);
           if (name === "shell_exec" && isDevServerCommand(String(args.command ?? ""))) {
             runtimeStartAttempted = true;
