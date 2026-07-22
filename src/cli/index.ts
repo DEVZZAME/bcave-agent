@@ -99,6 +99,7 @@ function cycleMode(): void {
 const COMMANDS = [
   { name: "/resume", desc: "이전 세션 다시 열기" },
   { name: "/model", desc: "모델 선택 (gpt-5.6-luna 기본 · auto 용도별 라우팅)" },
+  { name: "/deploy", desc: "배포 환경 재선택 (방향키 셀렉터)" },
   { name: "/verify", desc: "코드 수정 후 자동 검증-수정 루프 on/off" },
   { name: "/smoke", desc: "앱 생성 후 서버 띄워 헬스체크 on/off" },
   { name: "/usage", desc: "사용량/한도 확인" },
@@ -889,6 +890,28 @@ async function handleSlashCommand(text: string): Promise<boolean> {
 
 
 
+  if (trimmed === "/deploy") {
+    const deployItems = [
+      { label: "Vercel  ✦ 프론트 중심 추천", dimLabel: "1. Vercel ✦ 프론트 중심 추천 — Next.js + PostgreSQL(Neon)" },
+      { label: "Railway ✦ 빠른 풀스택 추천", dimLabel: "2. Railway ✦ 빠른 풀스택 추천 — Node.js+Express+PostgreSQL" },
+      { label: "Fly.io", dimLabel: "3. Fly.io — Docker + PostgreSQL, 리전 선택 가능" },
+      { label: "AWS / ECS  ✦ 대규모·엔터프라이즈", dimLabel: "4. AWS / ECS ✦ 대규모 — EC2/Fargate + RDS" },
+      { label: "VPS / 자체 서버  ✦ 고정비용·완전제어", dimLabel: "5. VPS ✦ 고정비용 — Ubuntu + Nginx + Docker Compose" },
+      { label: "로컬 개발용", dimLabel: "6. 로컬 — 지금은 로컬, 나중에 결정" },
+    ];
+    const answers = ["vercel", "railway", "fly", "aws", "vps", "local"];
+    console.log("\n  " + chalk.bold("배포 환경 재선택") + chalk.dim("  (↑↓ 방향키·Enter 선택 · ESC 취소)"));
+    const idx = await showSelector(deployItems);
+    if (idx >= 0) {
+      const chosen = answers[idx];
+      if (cm) cm.setDeployTarget(chosen);
+      console.log(chalk.green(`  ✓ 배포 환경 → ${deployItems[idx].label}`) + chalk.dim("  (다음 서비스 개발부터 적용)"));
+    } else {
+      console.log(chalk.dim("  취소됨"));
+    }
+    return true;
+  }
+
   if (trimmed === "/smoke" || trimmed.startsWith("/smoke ")) {
     const arg = trimmed.slice(6).trim().toLowerCase();
     if (arg === "on" || arg === "off") {
@@ -917,10 +940,12 @@ async function handleSlashCommand(text: string): Promise<boolean> {
 }
 
 // ─── Agent Events ──────────────────────────────────────
-async function processAgentEvents(gen: AsyncGenerator<AgentEvent>): Promise<void> {
+async function processAgentEvents(initialGen: AsyncGenerator<AgentEvent>): Promise<void> {
+  let gen = initialGen;
   processing = true;
   aborted = false;
   runStartMs = Date.now();
+  let autoReply = ""; // 셀렉터 선택 후 다음 턴에 자동으로 보낼 응답
   enterWorkInput();
   startSpinner();
   try {
@@ -937,11 +962,45 @@ async function processAgentEvents(gen: AsyncGenerator<AgentEvent>): Promise<void
           }
           break;
         }
-        case "text":
+        case "text": {
+          // 배포 환경 선택 질문 → 방향키 셀렉터로 인터셉트
+          if (/어떤 환경에 배포할 예정인가요/.test(event.content)) {
+            const deployItems = [
+              { label: "Vercel  ✦ 프론트 중심 추천", dimLabel: "1. Vercel ✦ 프론트 중심 추천  — Next.js + PostgreSQL(Neon), git push 자동 배포" },
+              { label: "Railway ✦ 빠른 풀스택 추천", dimLabel: "2. Railway ✦ 빠른 풀스택 추천 — Node.js+Express+PostgreSQL 올인원" },
+              { label: "Fly.io", dimLabel: "3. Fly.io — Docker + PostgreSQL, 리전 선택 가능" },
+              { label: "AWS / ECS  ✦ 대규모·엔터프라이즈", dimLabel: "4. AWS / ECS ✦ 대규모·엔터프라이즈 — EC2/Fargate + RDS" },
+              { label: "VPS / 자체 서버  ✦ 고정비용·완전제어", dimLabel: "5. VPS / 자체 서버 ✦ 고정비용 — Ubuntu + Nginx + Docker Compose" },
+              { label: "로컬 개발용", dimLabel: "6. 로컬 — 지금은 로컬, 나중에 배포 결정" },
+            ];
+            exitWorkInput();
+            console.log("\n  " + chalk.bold("배포 환경 선택") + chalk.dim("  (↑↓ 방향키·Enter 선택 · ESC 취소)"));
+            const idx = await showSelector(deployItems);
+            enterWorkInput();
+            if (idx >= 0) {
+              const answers = ["vercel", "railway", "fly", "aws", "vps", "local"];
+              autoReply = answers[idx];
+            }
+            break;
+          }
+          // 디자인시스템 선택 질문 → 방향키 셀렉터로 인터셉트
+          if (/디자인 시스템을 선택해 주세요/.test(event.content)) {
+            const dsItems = [
+              { label: "BCAVE  ✦ 자사 브랜드 기본", dimLabel: "1. BCAVE — 자사 브랜드 · 모노톤 슬레이트 · PPT 표지 문법 (기본/공식)" },
+              { label: "AXIS", dimLabel: "2. AXIS — 밝은 코발트 · 모던 프로페셔널" },
+            ];
+            exitWorkInput();
+            console.log("\n  " + chalk.bold("디자인 시스템 선택") + chalk.dim("  (↑↓ 방향키·Enter 선택 · ESC 취소)"));
+            const idx = await showSelector(dsItems);
+            enterWorkInput();
+            if (idx >= 0) autoReply = String(idx + 1);
+            break;
+          }
           console.log("");
           for (const line of event.content.split("\n")) console.log("  " + line);
           console.log("");
           break;
+        }
 
         case "tool_start":
           // 승인 여부와 무관하게 "무엇을 하는 중"을 표시(yolo 모드 포함)
@@ -988,6 +1047,14 @@ async function processAgentEvents(gen: AsyncGenerator<AgentEvent>): Promise<void
           break;
 
         case "done":
+          // 셀렉터로 선택한 답변이 있으면 자동으로 다음 턴 시작
+          if (autoReply) {
+            const reply = autoReply;
+            autoReply = "";
+            console.log("  " + chalk.dim(`↳ 선택: ${reply}`));
+            gen = cm!.run(reply, abortController?.signal);
+            startSpinner();
+          }
           break;
       }
 
@@ -1044,7 +1111,7 @@ async function handleInput(text: string): Promise<void> {
 
 
   abortController = new AbortController();
-  const gen = cm.run(trimmed, abortController.signal);
+  let gen = cm.run(trimmed, abortController.signal);
   await processAgentEvents(gen);
   persistSession(trimmed);
   prompt();

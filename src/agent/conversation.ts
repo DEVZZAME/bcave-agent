@@ -217,6 +217,12 @@ CHARTS: <script>{{BCAVE_CHARTJS}}</script>, canvas in position:relative;height:2
     });
   }
 
+  /** 배포 환경을 외부에서 재설정 (CLI /deploy 명령용). */
+  setDeployTarget(target: string): void {
+    this.selectedDeployTarget = target;
+    this.pendingDeployChoice = false;
+  }
+
   approveToolCall(id: string): void {
     const pending = this.pendingApprovals.get(id);
     if (pending) {
