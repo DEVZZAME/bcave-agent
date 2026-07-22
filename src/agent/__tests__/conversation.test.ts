@@ -32,32 +32,35 @@ describe("ConversationManager", () => {
     expect(cm).toBeDefined();
   });
 
-  it("injects the configured design system for service application UI", async () => {
+  it("does NOT inject design system context for app/service builds (routing loop fix)", async () => {
+    // 앱 빌드는 DS 컨텍스트를 주입하지 않는다 — 주입 시 모델이 write_file에 design_system
+    // 필드를 포함해 body/app_script 강제 루프에 빠지던 문제를 방지한다.
     const cm = new ConversationManager(config, new PermissionManager("yolo"), process.cwd());
     const run = cm.run("관리자 웹 서비스를 만들어줘");
+    await run.next();
 
-    await run.next(); // model 이벤트 직전까지 실행해 시스템 지침을 주입한다.
-
-    const injected = cm.getHistory().find((message) =>
+    const hasAppDsContext = cm.getHistory().some((message) =>
       message.role === "system" && typeof message.content === "string" &&
       message.content.includes("모든 웹 UI는 BCAVE 디자인 시스템을 반드시 사용"),
     );
-    expect(injected).toBeDefined();
-    expect(String(injected?.content)).toContain("bcave-tokens.css");
-    expect(String(injected?.content)).toContain("TSX/JSX");
+    expect(hasAppDsContext).toBe(false);
+    // 앱 빌드 지시(APPLICATION_CONTEXT)는 주입된다
+    const hasAppContext = cm.getHistory().some((message) =>
+      message.role === "system" && String(message.content).includes("APPLICATION_CONTEXT"),
+    );
+    expect(hasAppContext).toBe(true);
     await run.return(undefined);
   });
 
-  it("lets an explicit AXIS request override the configured BCAVE system", async () => {
+  it("does NOT inject design system context even with an explicit system name in app builds", async () => {
     const cm = new ConversationManager(config, new PermissionManager("yolo"), process.cwd());
     const run = cm.run("AXIS 디자인으로 관리자 서비스를 만들어줘");
-
     await run.next();
 
-    const systems = cm.getHistory().filter((message) => message.role === "system")
-      .map((message) => String(message.content));
-    expect(systems.some((content) => content.includes("모든 웹 UI는 AXIS 디자인 시스템을 반드시 사용"))).toBe(true);
-    expect(systems.some((content) => content.includes("모든 웹 UI는 BCAVE 디자인 시스템을 반드시 사용"))).toBe(false);
+    const hasDsContext = cm.getHistory().some((message) =>
+      message.role === "system" && String(message.content).includes("모든 웹 UI는 AXIS 디자인 시스템을 반드시 사용"),
+    );
+    expect(hasDsContext).toBe(false);
     await run.return(undefined);
   });
 
@@ -88,71 +91,32 @@ describe("ConversationManager", () => {
     await troubleshoot.return(undefined);
   });
 
-  it("replaces a previous BCAVE context when the user switches the service to AXIS", async () => {
+  it("does NOT inject DS context for multi-turn app builds either", async () => {
     const cm = new ConversationManager(config, new PermissionManager("yolo"), process.cwd());
-    const bcaveRun = cm.run("관리자 웹 서비스를 만들어줘");
-    await bcaveRun.next();
-    await bcaveRun.return(undefined);
+    const r1 = cm.run("관리자 웹 서비스를 만들어줘");
+    await r1.next();
+    await r1.return(undefined);
 
-    const axisRun = cm.run("AXIS 디자인시스템으로 서비스를 구현해줘");
-    await axisRun.next();
+    const r2 = cm.run("AXIS 디자인시스템으로 서비스를 구현해줘");
+    await r2.next();
 
-    const designContexts = cm.getHistory().filter((message) =>
-      message.role === "system" && typeof message.content === "string" &&
-      message.content.includes("[ACTIVE_DESIGN_SYSTEM:"),
-    ).map((message) => String(message.content));
-    expect(designContexts).toHaveLength(1);
-    expect(designContexts[0]).toContain("[ACTIVE_DESIGN_SYSTEM:axis]");
-    expect(designContexts[0]).toContain("모든 웹 UI는 AXIS 디자인 시스템을 반드시 사용");
-    expect(designContexts[0]).not.toContain("모든 웹 UI는 BCAVE 디자인 시스템을 반드시 사용");
-    expect(designContexts[0]).toContain("이전 시스템 참조를 제거");
-    await axisRun.return(undefined);
+    // 앱 빌드는 DS 컨텍스트 없음
+    const dsContexts = cm.getHistory().filter((m) =>
+      m.role === "system" && String(m.content).includes("[ACTIVE_DESIGN_SYSTEM:"),
+    );
+    expect(dsContexts).toHaveLength(0);
+    await r2.return(undefined);
   });
 
-  it("uses an auth composition instead of dashboard patterns for a login screen", async () => {
+  it("standalone dashboard request still uses DS pipeline (not affected by app build fix)", async () => {
     const cm = new ConversationManager(config, new PermissionManager("yolo"), process.cwd());
-    const run = cm.run("AXIS 디자인시스템으로 로그인 화면이 있는 서비스를 만들어줘");
-    await run.next();
-
-    const context = cm.getHistory().find((message) =>
-      message.role === "system" && String(message.content).includes("[ACTIVE_DESIGN_SYSTEM:axis]"),
-    );
-    expect(String(context?.content)).toContain("[UI_SURFACE:auth]");
-    expect(String(context?.content)).toContain("topbar/sidebar, KPI, 차트");
-    expect(String(context?.content)).not.toContain("KPI 4개 중 최상위");
+    const run = cm.run("매출 분석 대시보드를 만들어줘");
+    const first = await run.next();
+    // 대시보드 단독 요청은 DS 강제 파이프라인을 사용한다
+    expect(first.value).toMatchObject({ type: "model" });
+    expect(cm.getHistory().some((m) =>
+      m.role === "system" && String(m.content).includes("BCAVE 디자인 시스템 강제 파이프라인"),
+    )).toBe(true);
     await run.return(undefined);
-  });
-
-  it("uses workflow composition for a normal platform service", async () => {
-    const cm = new ConversationManager(config, new PermissionManager("yolo"), process.cwd());
-    const run = cm.run("브랜드 권리 관리 플랫폼 서비스를 구현해줘");
-    await run.next();
-
-    const context = cm.getHistory().find((message) =>
-      message.role === "system" && String(message.content).includes("[ACTIVE_DESIGN_SYSTEM:bcave]"),
-    );
-    expect(String(context?.content)).toContain("[UI_SURFACE:platform]");
-    expect(String(context?.content)).toContain("실제 작업 흐름");
-    expect(String(context?.content)).toContain("KPI·차트·통계 카드·대시보드 grid를 넣지 않는다");
-    expect(String(context?.content)).not.toContain("KPI 4개 중 최상위");
-    await run.return(undefined);
-  });
-
-  it("keeps a dashboard request inside an active application while using dashboard composition", async () => {
-    const cm = new ConversationManager(config, new PermissionManager("yolo"), process.cwd());
-    const app = cm.run("브랜드 관리 서비스를 구현해줘");
-    await app.next();
-    await app.return(undefined);
-
-    const dashboard = cm.run("매출 분석 대시보드 화면을 추가해줘");
-    expect((await dashboard.next()).value).toMatchObject({ type: "model" });
-
-    const context = cm.getHistory().find((message) =>
-      message.role === "system" && String(message.content).includes("[ACTIVE_DESIGN_SYSTEM:bcave]"),
-    );
-    expect(String(context?.content)).toContain("[UI_SURFACE:dashboard]");
-    expect(String(context?.content)).toContain("KPI 4개 중 최상위");
-    expect(String(context?.content)).not.toContain("디자인 시스템 강제 파이프라인");
-    await dashboard.return(undefined);
   });
 });
