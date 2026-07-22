@@ -103,6 +103,16 @@ async function wait(ms: number, signal?: AbortSignal): Promise<void> {
   });
 }
 
+/**
+ * 추론(reasoning) 모델 여부 판별.
+ * 이 모델들은 /v1/chat/completions 에서 tools 사용 시 reasoning_effort:"none" 이 필수.
+ * (기본값인 reasoning_effort 를 두면 "Function tools … not supported" 400 오류 발생)
+ */
+function isReasoningModel(model: string): boolean {
+  return /\b(o1|o3|o4|luna|terra|sol)\b/i.test(model) ||
+    /gpt-5\.\d+-(?:luna|terra|sol|preview)/i.test(model);
+}
+
 export async function chat(
   client: OpenAI,
   messages: ChatCompletionMessageParam[],
@@ -122,9 +132,13 @@ export async function chat(
         {
           model,
           messages,
+          stream: false,
           tools: TOOL_DEFINITIONS,
           tool_choice: "auto",
           max_completion_tokens: MAX_COMPLETION_TOKENS,
+          // 추론 모델(luna/terra/sol/o1/o3/o4)은 reasoning_effort 기본값이 설정되면
+          // /v1/chat/completions 에서 tools 를 거부한다 → "none" 으로 강제해 tools 허용.
+          ...(isReasoningModel(model) ? { reasoning_effort: "none" } : {}),
         },
         { signal: opts.signal },
       );
