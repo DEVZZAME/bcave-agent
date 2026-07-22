@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import http from "node:http";
+import os from "node:os";
 import zlib from "node:zlib";
 import { exec, spawn } from "node:child_process";
 import { glob } from "glob";
@@ -154,6 +155,17 @@ export function isDevServerCommand(command: string): boolean {
   return /(?:^|\s|\&\&|\|\|)\s*(?:npm|yarn|pnpm|bun)\s+(?:run\s+)?(?:dev|start|serve|preview|dev:server|start:dev)\b/i.test(command) ||
     /(?:^|\s)(?:npx\s+)?vite\b(?!\s+build)/i.test(command) ||
     /\b(?:next|vite|ts-node|tsx|nodemon|pm2 start)\b.*(?:dev|start|watch|index\.ts|server\.ts|index\.js)/i.test(command);
+}
+
+/** 새 프로세스의 명령/로그에 실제로 나타난 포트만 반환한다. */
+export function extractServerPorts(text: string): number[] {
+  const found = new Set<number>();
+  const unavailable = new Set<number>();
+  for (const m of text.matchAll(/\bport\s+(\d{2,5})\s+is\s+(?:already\s+)?in\s+use\b/gi)) unavailable.add(+m[1]);
+  for (const m of text.matchAll(/(?:localhost|127\.0\.0\.1|0\.0\.0\.0|::1)?:(\d{2,5})\b/g)) found.add(+m[1]);
+  for (const m of text.matchAll(/\bport[\s:=]+(\d{2,5})\b/gi)) found.add(+m[1]);
+  for (const m of text.matchAll(/\b(?:api|server)\s+(?:on|at|listening(?:\s+on)?)\s+(\d{2,5})\b/gi)) found.add(+m[1]);
+  return [...found].filter((port) => port > 0 && port < 65536 && !unavailable.has(port));
 }
 
 // ── 출력 폭증 방지: 툴 결과 크기·항목 수 상한 + 무거운 폴더 제외 ──
@@ -854,48 +866,51 @@ export async function executeTool(
         const isDevServer = isDevServerCommand(cmd);
 
         if (isDevServer) {
-          const child = spawn(cmd, { cwd, shell: true, detached: true, stdio: ["ignore", "pipe", "pipe"],
+          // pipe를 성공 직후 destroy하면 concurrently/Vite가 EPIPE로 종료될 수 있다.
+          // 독립 로그 파일을 자식 stdio로 넘겨 CLI 턴이 끝난 뒤에도 서버가 유지되게 한다.
+          const logPath = path.join(os.tmpdir(), `bcave-server-${Date.now()}-${process.pid}.log`);
+          const logFd = fs.openSync(logPath, "a");
+          const child = spawn(cmd, { cwd, shell: true, detached: true, stdio: ["ignore", logFd, logFd],
             env: { ...process.env, NODE_ENV: "development", BROWSER: "none", FORCE_COLOR: "0" } });
-          const logs: string[] = [];
-          child.stdout?.on("data", (b: Buffer) => logs.push(b.toString()));
-          child.stderr?.on("data", (b: Buffer) => logs.push(b.toString()));
+          fs.closeSync(logFd);
           let exited: number | null = null;
           child.on("exit", (c) => { exited = c ?? 0; });
 
-          // 포트를 stdout 에서 추출하거나 일반적인 기본 포트를 시도한다
-          const guessPort = (text: string): number[] => {
-            // 다른 프로젝트의 기존 서버를 성공으로 오인하지 않도록 새 프로세스가
-            // 명령/로그에서 실제로 언급한 포트만 검사한다.
-            const found = new Set<number>();
-            for (const m of text.matchAll(/(?:localhost|127\.0\.0\.1|:)(\d{2,5})\b/g)) found.add(+m[1]);
-            for (const m of text.matchAll(/port[\s:=]+(\d{2,5})/gi)) found.add(+m[1]);
-            return [...found].filter(p => p > 0 && p < 65536);
-          };
-          const ping = (port: number, t = 1200) => new Promise<boolean>(res => {
-            const req = http.get({ host: "127.0.0.1", port, path: "/", timeout: t }, r => { r.destroy(); res(true); });
+          const readLogs = () => { try { return fs.readFileSync(logPath, "utf8"); } catch { return ""; } };
+          const pingHost = (host: string, port: number, t = 1200) => new Promise<boolean>(res => {
+            const req = http.get({ host, port, path: "/", timeout: t }, r => { r.destroy(); res(true); });
             req.on("error", () => res(false)); req.on("timeout", () => { req.destroy(); res(false); });
           });
+          // Vite는 환경에 따라 ::1(localhost)에만 바인딩될 수 있어 127.0.0.1만 검사하면 오탐한다.
+          const ping = async (port: number) => await pingHost("localhost", port) || await pingHost("127.0.0.1", port);
           const deadline = Date.now() + 30_000;
-          let url = "";
+          let livePorts: number[] = [];
+          let firstResponseAt = 0;
           while (Date.now() < deadline) {
             if (exited !== null && exited !== 0) break;
-            const text = logs.join("");
-            for (const p of guessPort(`${cmd}\n${text}`)) { if (await ping(p)) { url = `http://localhost:${p}`; break; } }
-            if (url) break;
+            const ports = extractServerPorts(`${cmd}\n${readLogs()}`);
+            livePorts = [];
+            for (const p of ports) if (await ping(p)) livePorts.push(p);
+            // concurrently 같은 다중 서버 명령에서 첫 서버만 보고 너무 일찍 성공하지 않는다.
+            if (livePorts.length && !firstResponseAt) firstResponseAt = Date.now();
+            if (firstResponseAt && Date.now() - firstResponseAt >= 1500) break;
             await new Promise(r => setTimeout(r, 600));
           }
-          const tail = logs.join("").slice(-1500).trim();
-          if (url) {
-            // 서버를 kill하지 않고 부모 프로세스에서 분리해 백그라운드로 계속 실행한다.
-            child.stdout?.destroy();
-            child.stderr?.destroy();
+          const logText = readLogs();
+          const tail = logText.slice(-2500).trim();
+          if (livePorts.length && exited === null) {
+            // Vite가 포트 충돌로 5174 등에 올라가면 로그의 Local URL을 대표 URL로 삼는다.
+            const localPort = +(logText.match(/Local:\s+https?:\/\/(?:localhost|127\.0\.0\.1):(\d{2,5})/i)?.[1] || 0);
+            const primaryPort = livePorts.includes(localPort) ? localPort : livePorts[0];
+            const urls = [primaryPort, ...livePorts.filter(p => p !== primaryPort)].map(p => `http://localhost:${p}`);
             child.unref();
             await resolvePlaceholdersInDir(cwd);
-            return `[SERVER_STARTED] ${url}\nPID: ${child.pid ?? "unknown"}\n종료하려면: kill ${child.pid ?? "<PID>"}`;
+            return `[SERVER_STARTED] ${urls[0]}\n응답 확인 URL: ${urls.join(", ")}\nPID: ${child.pid ?? "unknown"}\n로그: ${logPath}\n종료하려면: kill -${child.pid ?? "<PID>"}`;
           }
           // 기동 실패 시에는 정리
           try { if (child.pid) process.kill(-child.pid, "SIGTERM"); } catch { /* noop */ }
           try { if (child.pid) process.kill(child.pid, "SIGTERM"); } catch { /* noop */ }
+          try { fs.unlinkSync(logPath); } catch { /* noop */ }
           return `[SERVER_START_FAILED] 서버 응답 없음 (30초 초과).\n로그:\n${tail || "(없음)"}\n\n위 로그를 보고 오류를 수정하세요. 실제 HTTP 응답을 확인하기 전에는 실행됐다고 말하지 마세요.`;
         }
 

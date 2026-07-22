@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import XLSX from "xlsx";
-import { executeTool, getToolCategory, isDevServerCommand, TOOL_DEFINITIONS } from "../tools.js";
+import { executeTool, extractServerPorts, getToolCategory, isDevServerCommand, TOOL_DEFINITIONS } from "../tools.js";
 
 describe("Tools", () => {
   const testDir = path.join(os.tmpdir(), "bcave-tools-test-" + Date.now());
@@ -52,6 +52,11 @@ describe("Tools", () => {
     expect(isDevServerCommand("npx vite --host 0.0.0.0")).toBe(true);
     expect(isDevServerCommand("npm run build")).toBe(false);
     expect(isDevServerCommand("npm test")).toBe(false);
+  });
+
+  it("uses the actual fallback frontend port and ignores an occupied port", () => {
+    const logs = "Port 5173 is in use, trying another one...\nLocal: http://localhost:5174/\nAPI on 3001";
+    expect(extractServerPorts(logs)).toEqual([5174, 3001]);
   });
 
   describe("read_file", () => {
