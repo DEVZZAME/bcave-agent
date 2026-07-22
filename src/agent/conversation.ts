@@ -740,7 +740,12 @@ CHARTS: <script>{{BCAVE_CHARTJS}}</script>, canvas in position:relative;height:2
     // A) 검증→자동수정 루프 상태: 코드가 바뀌면 검증 명령을 돌려 실패 시 모델이 스스로 고치게 한다.
     const verifyCmds = this.config.autoVerify ? detectVerifyCommands(this.cwd, this.config.verifyCmds) : [];
     let codeTouched = false;
-    let verifyRounds = 0;
+    // 검증 단계별 재시도 횟수를 분리한다. 앞 단계 오류가 뒤 단계의 수정 기회를 소진하면 안 된다.
+    let buildRepairRounds = 0;
+    let schemaRepairRounds = 0;
+    let proxyRepairRounds = 0;
+    let completenessRepairRounds = 0;
+    let smokeRepairRounds = 0;
     let artifactValidationPending = false;
     let artifactRepairRounds = 0;
     const executionRequested = /(실행해|실행시켜|서버.{0,8}(?:켜|띄워|실행)|(?:^|\s)(?:run|start)(?:\s|$))/i.test(userMessage);
@@ -767,12 +772,17 @@ CHARTS: <script>{{BCAVE_CHARTJS}}</script>, canvas in position:relative;height:2
         const { message } = choice;
 
         const text = message.content?.trim() ?? "";
+        let currentTextYielded = false;
+        const hasNoToolCalls = !message.tool_calls || message.tool_calls.length === 0;
         const modelIsTryingToFinishPendingArtifact = artifactValidationPending &&
-          (!message.tool_calls || message.tool_calls.length === 0);
+          hasNoToolCalls;
         const modelIsTryingToReportRuntime = executionRequested &&
-          (!message.tool_calls || message.tool_calls.length === 0);
-        if (text && text !== lastText && !modelIsTryingToFinishPendingArtifact && !modelIsTryingToReportRuntime) {
+          hasNoToolCalls;
+        const modelIsTryingToFinishUnverifiedCode = codeTouched && hasNoToolCalls &&
+          (verifyCmds.length > 0 || (this.applicationActive && this.config.autoVerify));
+        if (text && text !== lastText && !modelIsTryingToFinishPendingArtifact && !modelIsTryingToReportRuntime && !modelIsTryingToFinishUnverifiedCode) {
           lastText = text;
+          currentTextYielded = true;
           yield { type: "text", content: message.content as string };
         }
 
@@ -821,11 +831,11 @@ CHARTS: <script>{{BCAVE_CHARTJS}}</script>, canvas in position:relative;height:2
             yield { type: "verify", status: "run", cmd: verifyCmds.join(" && ") };
             const fail = runVerify(verifyCmds, this.cwd);
             if (fail) {
-              if (verifyRounds >= this.config.maxVerifyRounds) {
+              if (buildRepairRounds >= this.config.maxVerifyRounds) {
                 yield { type: "error", message: `빌드/타입 검증에 실패해 완료 처리하지 않았습니다.\n${fail.output}` };
                 return;
               }
-              verifyRounds++;
+              buildRepairRounds++;
               codeTouched = false; // 다음 라운드에서 다시 수정하면 재검증
               this.messages.push({ role: "assistant", content: message.content ?? "" });
               this.messages.push({
@@ -871,11 +881,11 @@ CHARTS: <script>{{BCAVE_CHARTJS}}</script>, canvas in position:relative;height:2
               }
             }
             if (schemaIssues.length > 0) {
-              if (verifyRounds >= this.config.maxVerifyRounds) {
+              if (schemaRepairRounds >= this.config.maxVerifyRounds) {
                 yield { type: "error", message: `DB 스키마 검증에 실패해 완료 처리하지 않았습니다.\n${schemaIssues.join("\n")}` };
                 return;
               }
-              verifyRounds++;
+              schemaRepairRounds++;
               codeTouched = false;
               const detail = `[DB 스키마-INSERT 불일치]\n${schemaIssues.join("\n")}\n\n주의: CREATE TABLE IF NOT EXISTS 는 기존 테이블을 수정하지 않습니다. 컬럼 추가 시 DB 파일을 삭제하거나 ALTER TABLE ADD COLUMN 을 추가해야 합니다.`;
               this.messages.push({ role: "assistant", content: message.content ?? "" });
@@ -904,11 +914,11 @@ CHARTS: <script>{{BCAVE_CHARTJS}}</script>, canvas in position:relative;height:2
                 } catch { return false; }
               })();
               if (hasBackend && fetchesApi && !hasProxy) {
-                if (verifyRounds >= this.config.maxVerifyRounds) {
+                if (proxyRepairRounds >= this.config.maxVerifyRounds) {
                   yield { type: "error", message: "Vite /api 프록시 검증에 실패해 완료 처리하지 않았습니다." };
                   return;
                 }
-                verifyRounds++;
+                proxyRepairRounds++;
                 codeTouched = false;
                 const issue = `[Vite 프록시 누락] 프론트(Vite)에서 fetch('/api/...')를 호출하지만 vite.config.ts 에 proxy 설정이 없습니다.\nVite 개발 서버(5173)는 /api 요청을 백엔드(예: 3001)로 전달하지 않아 "Failed to fetch" / "Unexpected end of JSON" 오류가 발생합니다.\n\n${viteCfgPath} 에 다음을 추가하세요:\nserver: { proxy: { '/api': { target: 'http://localhost:3001', changeOrigin: true } } }`;
                 this.messages.push({ role: "assistant", content: message.content ?? "" });
@@ -924,11 +934,11 @@ CHARTS: <script>{{BCAVE_CHARTJS}}</script>, canvas in position:relative;height:2
           if (this.applicationActive && this.config.autoVerify && codeTouched) {
             const completenessIssues = auditAppCompleteness(this.cwd);
             if (completenessIssues.length > 0) {
-              if (verifyRounds >= this.config.maxVerifyRounds) {
+              if (completenessRepairRounds >= this.config.maxVerifyRounds) {
                 yield { type: "error", message: `화면 기능 연결 확인에 실패해 완료 처리하지 않았습니다.\n${completenessIssues.join("\n")}` };
                 return;
               }
-              verifyRounds++;
+              completenessRepairRounds++;
               codeTouched = false;
               const detail = `[화면 완성도 확인 실패]\n${completenessIssues.map((issue) => `- ${issue}`).join("\n")}\n\n화면에 보이는 모든 메뉴·버튼·지표를 실제 기능/데이터에 연결하세요. 구현하지 않을 항목은 클릭 가능한 UI와 완성 주장 모두에서 제거하세요.`;
               this.messages.push({ role: "assistant", content: message.content ?? "" });
@@ -944,11 +954,11 @@ CHARTS: <script>{{BCAVE_CHARTJS}}</script>, canvas in position:relative;height:2
             yield { type: "verify", status: "run", cmd: "서버 실행 헬스체크(스모크)" };
             const smoke = await smokeTest(this.cwd, signal);
             if (!smoke.ok) {
-              if (verifyRounds >= this.config.maxVerifyRounds) {
+              if (smokeRepairRounds >= this.config.maxVerifyRounds) {
                 yield { type: "error", message: `서비스 실행 검증에 실패해 완료 처리하지 않았습니다.\n${smoke.detail}` };
                 return;
               }
-              verifyRounds++;
+              smokeRepairRounds++;
               codeTouched = false;
               this.messages.push({ role: "assistant", content: message.content ?? "" });
               this.messages.push({
@@ -967,6 +977,10 @@ CHARTS: <script>{{BCAVE_CHARTJS}}</script>, canvas in position:relative;height:2
             this.messages.push({ role: "assistant", content: confirmed });
             yield { type: "text", content: confirmed };
           } else {
+            if (text && !currentTextYielded) {
+              lastText = text;
+              yield { type: "text", content: message.content as string };
+            }
             this.messages.push({ role: "assistant", content: message.content ?? "" });
           }
           yield { type: "done" };
