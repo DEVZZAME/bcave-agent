@@ -130,6 +130,16 @@ describe("Tools", () => {
       expect(result).not.toContain("검토 통과");
     });
 
+    it("allows tuple indexes and ranking slices that are not normalized data rows", async () => {
+      const result = await executeTool("write_file", {
+        path: "valid-aggregation-dashboard.html",
+        content: `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><div id="out"></div><script>window.__DATA={"법인":[{"국가":"한국"}]};</script><script>const rows=window.__DATA['법인']||[];const counts={한국:2,미국:1};const entries=Object.entries(counts).sort((a,b)=>b[1]-a[1]);const rest=entries.slice(5).reduce((sum,e)=>sum+e[1],0);const actions=[["검토",2],["완료",1]];document.getElementById('out').textContent=entries.map(e=>e[0]).join(',')+actions.map(a=>a[0]).join(',')+rest+rows.length;</script></body></html>`,
+      }, testDir);
+      expect(result).toContain("검토 통과");
+      expect(result).not.toContain("숫자 인덱스");
+      expect(result).not.toContain(".slice(1+)");
+    });
+
     it("never tells the model to stop repairing a failed design lint", async () => {
       const args = {
         path: "invalid-dashboard.html",

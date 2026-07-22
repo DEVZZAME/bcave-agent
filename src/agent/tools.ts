@@ -581,13 +581,16 @@ function reviewHtml(content: string, filePath: string): string[] {
     const appScripts = (content.match(/<script>[^]*?<\/script>/gi) || []).map((block) => block.slice(block.indexOf(">") + 1, -9)).filter((js) =>
       js.length < 60_000 && !js.includes("Chart.js v") && !/^\s*window\.__DATA\s*=/.test(js),
     ).join("\n");
-    // 정리된 데이터에 .slice(N) 으로 앞행을 '헤더인 줄 알고' 버리는 오류.
-    // 별칭(d['시트'])을 거쳐도 잡아야 하므로 앱 스크립트 전체에서 양수 시작 인덱스를 검사한다.
-    if (/\.slice\(\s*[1-9]\d*\s*(?:[,)]|$)/.test(appScripts)) {
+    // 정리된 주입 행에 .slice(1~3)으로 앞행을 '헤더인 줄 알고' 버리는 오류만 검사한다.
+    // Object.entries(...).slice(5) 같은 순위/기타 묶기 로직은 정상이라 제외한다.
+    const slicesNormalizedRows = /\b(?:rows?|data|records?|items?|all|sheetRows)\s*\.\s*slice\(\s*[1-3]\s*(?:[,)]|$)/i.test(appScripts) ||
+      /\(\s*[A-Za-z_$][\w$]*\s*\[\s*['"][^'"]+['"]\s*\]\s*\|\|\s*\[\s*\]\s*\)\s*\.\s*slice\(\s*[1-3]\s*(?:[,)]|$)/.test(appScripts);
+    if (slicesNormalizedRows) {
       issues.push("주입된 데이터에 .slice(1+) 로 앞 행을 건너뜁니다. 데이터는 이미 정리된 행 객체 배열(제목행 자동 제거)이라 .slice 로 앞행을 버리면 실제 데이터가 사라집니다.");
     }
     // 주입 데이터의 각 행은 배열이 아니라 컬럼명→값 객체다. r[0], r[7]은 항상 undefined라 차트가 비게 된다.
-    if (/(?:\.map|\.filter|\.forEach|\.reduce)\s*\(\s*([A-Za-z_$][\w$]*)\s*=>[^;\n]{0,500}\1\s*\[\s*\d+\s*\]/.test(appScripts)) {
+    // e/a 같은 콜백은 Object.entries 또는 별도 튜플 배열일 수 있으므로 행 의미 이름만 대상으로 한다.
+    if (/(?:\.map|\.filter|\.forEach|\.reduce)\s*\(\s*(r|row|record|item)\s*=>[^;\n]{0,500}\1\s*\[\s*\d+\s*\]/i.test(appScripts)) {
       issues.push("주입된 행 객체를 r[0], r[7]처럼 숫자 인덱스로 읽고 있습니다. 각 행은 배열이 아니므로 값이 undefined가 되어 차트·표가 비게 됩니다. r['연월'], r['총매출'], r['세그먼트']처럼 read_file에 표시된 실제 컬럼명을 사용하세요.");
     }
     // 고정 높이 차트 박스 + 2단 grid + align-items:start → 좌(차트)·우(카드) 아래끝 어긋남
