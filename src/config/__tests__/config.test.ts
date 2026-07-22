@@ -20,7 +20,7 @@ describe("Config", () => {
 
   it("returns default config when no file exists", () => {
     const config = loadConfig();
-    expect(config.model).toBe("gpt-5.4-mini");
+    expect(config.model).toBe("qwen3-coder");
     expect(config.autoRoute).toBe(false);
     expect(config.baseUrl).toBe("https://api.openai.com/v1");
     expect(config.apiKey).toBe("");
@@ -30,7 +30,7 @@ describe("Config", () => {
     saveConfig({ apiKey: "sk-test123" });
     const config = loadConfig();
     expect(config.apiKey).toBe("sk-test123");
-    expect(config.model).toBe("gpt-5.4-mini");
+    expect(config.model).toBe("qwen3-coder");
   });
 
   it("merges partial config with existing", () => {

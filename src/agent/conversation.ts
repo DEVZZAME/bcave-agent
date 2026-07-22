@@ -263,7 +263,11 @@ COMPOSITION DISCIPLINE:
    * tool_call/tool_result 쌍이 깨지지 않도록 반드시 user 메시지 경계에서 자른다.
    */
   private trimHistory(): void {
-    const BUDGET = 250_000; // 문자 수 (~6만 토큰) — 모델 한도보다 훨씬 아래로 유지
+    // qwen3-coder: 131K 토큰 네이티브 컨텍스트 → 문자 수 기준 약 50만 자까지 허용
+    // gpt-5.4-mini: ~16K 토큰 → 기존 25만 자 유지
+    // 모델 식별: config.model 에서 qwen 포함 여부로 판별
+    const isQwen = /qwen/i.test(this.config.model);
+    const BUDGET = isQwen ? 500_000 : 250_000; // 문자 수 — 모델 한도보다 훨씬 아래로 유지
     const msgs = this.messages;
     if (msgs.length <= 2) return;
     const size = (m: ChatCompletionMessageParam): number => JSON.stringify(m).length;
@@ -505,7 +509,16 @@ COMPOSITION DISCIPLINE:
         for (const toolCall of message.tool_calls) {
           if (!("function" in toolCall)) continue;
           const name = toolCall.function.name;
-          const args = JSON.parse(toolCall.function.arguments) as Record<string, unknown>;
+          let args: Record<string, unknown>;
+          try {
+            args = JSON.parse(toolCall.function.arguments) as Record<string, unknown>;
+          } catch (parseErr) {
+            // 모델별 툴 콜 파싱 실패율 집계를 위해 모델명을 로그에 포함
+            console.error(`[tool-parse-fail] model=${routed.model} tool=${name} err=${(parseErr as Error).message} raw=${toolCall.function.arguments?.slice(0, 200)}`);
+            this.messages.push({ role: "tool", tool_call_id: toolCall.id, content: "Tool call parse failed — invalid JSON in arguments." });
+            yield { type: "tool_result", name, result: "Tool call parse failed." };
+            continue;
+          }
           const category = getToolCategory(name);
 
           // 승인 여부와 무관하게 "무엇을 하는 중"을 먼저 알린다(yolo 모드에서도 진행 표시).

@@ -98,7 +98,7 @@ function cycleMode(): void {
 // ─── Slash Commands ────────────────────────────────────
 const COMMANDS = [
   { name: "/resume", desc: "이전 세션 다시 열기" },
-  { name: "/model", desc: "모델 선택 (auto 용도별 라우팅 · heavy/light <id> · <id> 고정)" },
+  { name: "/model", desc: "모델 선택 (qwen3-coder 기본 · gpt-5.4-mini 폴백 · auto 용도별 라우팅)" },
   { name: "/verify", desc: "코드 수정 후 자동 검증-수정 루프 on/off" },
   { name: "/smoke", desc: "앱 생성 후 서버 띄워 헬스체크 on/off" },
   { name: "/usage", desc: "사용량/한도 확인" },
@@ -542,8 +542,8 @@ async function resumeCommand(): Promise<void> {
 // ─── Model Selection ───────────────────────────────────
 // HUB 연결이 안 될 때만 쓰는 폴백 목록 (평상시엔 서버에서 받아온다)
 const FALLBACK_MODELS: HubModel[] = [
-  { id: "gpt-4o-mini", displayName: "gpt-4o-mini", description: "Fast and cost-efficient for simple tasks." },
-  { id: "gpt-4o", displayName: "gpt-4o", description: "Strong multimodal model for complex tasks." },
+  { id: "qwen3-coder", displayName: "qwen3-coder (기본)", description: "Qwen3-Coder-30B-A3B · 자체 호스팅 · 131K 컨텍스트 · 에이전틱 코딩 특화" },
+  { id: "gpt-5.4-mini", displayName: "gpt-5.4-mini (폴백)", description: "OpenAI GPT-5.4-mini · 경량, 빠른 응답" },
 ];
 
 async function selectModel(): Promise<void> {
