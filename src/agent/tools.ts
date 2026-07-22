@@ -876,13 +876,18 @@ export async function executeTool(
             if (url) break;
             await new Promise(r => setTimeout(r, 600));
           }
-          try { if (child.pid) process.kill(-child.pid, "SIGTERM"); } catch { /* 이미 없음 */ }
-          try { if (child.pid) process.kill(child.pid, "SIGTERM"); } catch { /* 이미 없음 */ }
           const tail = logs.join("").slice(-1500).trim();
           if (url) {
+            // 서버를 kill하지 않고 부모 프로세스에서 분리해 백그라운드로 계속 실행한다.
+            child.stdout?.destroy();
+            child.stderr?.destroy();
+            child.unref();
             await resolvePlaceholdersInDir(cwd);
-            return `✓ 서버 기동 확인: ${url}\n로그(끝):\n${tail || "(없음)"}`;
+            return `✓ 서버가 백그라운드에서 실행 중입니다: ${url}\nPID: ${child.pid ?? "unknown"}\n종료하려면: kill ${child.pid ?? "<PID>"}`;
           }
+          // 기동 실패 시에는 정리
+          try { if (child.pid) process.kill(-child.pid, "SIGTERM"); } catch { /* noop */ }
+          try { if (child.pid) process.kill(child.pid, "SIGTERM"); } catch { /* noop */ }
           return `서버 응답 없음 (30초 초과).\n로그:\n${tail || "(없음)"}\n\n위 로그를 보고 오류를 수정하세요. 포트가 다르면 명시적 포트 번호로 알려주세요.`;
         }
 
