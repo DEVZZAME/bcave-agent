@@ -740,7 +740,9 @@ export async function executeTool(
         if (requestedDesign && !hasDesignSystem(requestedDesign)) {
           return `File not written. 알 수 없는 디자인 시스템: ${requestedDesign}`;
         }
-        if (/\.html?$/i.test(filePath) && hasDesignSystem(design)) {
+        // 디자인시스템 HTML 파이프라인: design_system 필드가 명시된 경우에만 적용한다.
+        // 앱 빌드의 index.html(Vite 엔트리), 일반 HTML 템플릿 등은 content 필드로 처리한다.
+        if (requestedDesign && /\.html?$/i.test(filePath) && hasDesignSystem(design)) {
           try {
             const body = typeof args.body === "string" ? args.body : null;
             const app = typeof args.app_script === "string" ? args.app_script : null;
@@ -757,7 +759,7 @@ export async function executeTool(
         const content = resolvePlaceholders(source, cwd);
         fs.mkdirSync(path.dirname(filePath), { recursive: true });
         fs.writeFileSync(filePath, content, "utf-8");
-        if (/\.html?$/i.test(filePath) && hasDesignSystem(design)) {
+        if (requestedDesign && /\.html?$/i.test(filePath) && hasDesignSystem(design)) {
           const lint = lintDesignArtifact(design, filePath);
           if (!lint.pass) {
             const attempts = (designLintAttempts.get(filePath) ?? 0) + 1;
@@ -769,16 +771,22 @@ export async function executeTool(
           }
           designLintAttempts.delete(filePath);
         }
-        // 내보내기 전 자동 검토 (데이터 누락·자리표시자·문법). 문제가 있으면 모델이 고쳐 다시 쓰게 알린다.
-        const issues = reviewHtml(content, args.path as string);
-        if (issues.length) {
-          return (
-            `File written: ${args.path}\n` +
-            `⚠ 내보내기 검토에서 문제가 발견됐습니다. 아래를 고쳐 같은 파일에 다시 저장하세요:\n` +
-            issues.map((s) => "  - " + s).join("\n")
-          );
+        // 내보내기 전 자동 검토 — 단독 HTML 산출물(대시보드·리포트·디자인시스템 아티팩트)만 대상.
+        // Vite/React의 index.html, 프레임워크 템플릿 등 앱 빌드 HTML은 검토하지 않는다.
+        const isStandaloneArtifact = /\{\{BCAVE_(DATA|SHEETS|CHARTJS)|window\.__DATA|window\.__SHEETS/.test(content)
+          || (requestedDesign && /\.html?$/i.test(filePath));
+        if (isStandaloneArtifact) {
+          const issues = reviewHtml(content, args.path as string);
+          if (issues.length) {
+            return (
+              `File written: ${args.path}\n` +
+              `⚠ 내보내기 검토에서 문제가 발견됐습니다. 아래를 고쳐 같은 파일에 다시 저장하세요:\n` +
+              issues.map((s) => "  - " + s).join("\n")
+            );
+          }
+          return `File written: ${args.path} (검토 통과)`;
         }
-        return `File written: ${args.path} (검토 통과)`;
+        return `File written: ${args.path}`;
       }
       case "list_files": {
         const dirPath = path.resolve(cwd, args.path as string);
