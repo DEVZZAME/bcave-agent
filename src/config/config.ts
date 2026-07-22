@@ -42,7 +42,7 @@ const DEFAULT_CONFIG: BcaveConfig = {
   userName: "",
   // 로컬 LLM 게이트웨이 주소 (bcave-llm-gateway)
   // 설정하면 LLM 요청이 bcave-service-hub 대신 로컬로 간다. 비우면 기존 HUB 경유.
-  llmUrl: "http://127.0.0.1:4000/v1",
+  llmUrl: "", // 비어있으면 hubUrl(/api/v1) 경유 — LLM 게이트웨이는 bcave-service-hub
 
   // 기본 모델: gpt-5.6-luna
   // 롤백: /model gpt-5.4-mini + /llm-url "" 으로 HUB 경유 복구
