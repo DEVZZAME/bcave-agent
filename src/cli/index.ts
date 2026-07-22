@@ -1016,23 +1016,31 @@ async function processAgentEvents(initialGen: AsyncGenerator<AgentEvent>): Promi
         }
         case "text": {
           // 배포 환경 선택 질문 → 방향키 셀렉터로 인터셉트
-          if (/어떤 환경에 배포할 예정인가요/.test(event.content)) {
-            const deployItems = [
-              { label: "Vercel  ✦ 프론트 중심 추천", dimLabel: "1. Vercel ✦ 프론트 중심 추천  — Next.js + PostgreSQL(Neon), git push 자동 배포" },
-              { label: "Railway ✦ 빠른 풀스택 추천", dimLabel: "2. Railway ✦ 빠른 풀스택 추천 — Node.js+Express+PostgreSQL 올인원" },
-              { label: "Fly.io", dimLabel: "3. Fly.io — Docker + PostgreSQL, 리전 선택 가능" },
-              { label: "AWS / ECS  ✦ 대규모·엔터프라이즈", dimLabel: "4. AWS / ECS ✦ 대규모·엔터프라이즈 — EC2/Fargate + RDS" },
-              { label: "VPS / 자체 서버  ✦ 고정비용·완전제어", dimLabel: "5. VPS / 자체 서버 ✦ 고정비용 — Ubuntu + Nginx + Docker Compose" },
+          if (/어디에 배포할 예정인가요|어떤 환경에 배포할 예정인가요/.test(event.content)) {
+            // 스택 직후 배포 질문(5개) vs 독립 배포 질문(6개) 구분
+            const isPostStack = /DB 종류/.test(event.content);
+            const deployItems = isPostStack ? [
+              { label: "Railway  ✦ 빠른 배포 추천", dimLabel: "1. Railway ✦ 추천 — PostgreSQL 내장, 설정 최소" },
+              { label: "Vercel  ✦ Next.js 풀스택 추천", dimLabel: "2. Vercel ✦ Next.js — PostgreSQL(Neon/Supabase)" },
+              { label: "Fly.io", dimLabel: "3. Fly.io — Docker + PostgreSQL, 리전 선택" },
+              { label: "AWS / VPS  ✦ 완전 제어", dimLabel: "4. AWS / VPS ✦ 완전제어 — PostgreSQL" },
+              { label: "로컬만 (SQLite)", dimLabel: "5. 로컬만 — SQLite 사용 (배포 시 PostgreSQL 전환 필요)" },
+            ] : [
+              { label: "Vercel  ✦ 프론트 중심 추천", dimLabel: "1. Vercel ✦ 추천 — Next.js + PostgreSQL(Neon)" },
+              { label: "Railway ✦ 빠른 풀스택 추천", dimLabel: "2. Railway ✦ 추천 — Express + PostgreSQL 올인원" },
+              { label: "Fly.io", dimLabel: "3. Fly.io — Docker + PostgreSQL" },
+              { label: "AWS / ECS  ✦ 대규모", dimLabel: "4. AWS / ECS — EC2/Fargate + RDS" },
+              { label: "VPS / 자체 서버", dimLabel: "5. VPS — Ubuntu + Nginx + Docker Compose" },
               { label: "로컬 개발용", dimLabel: "6. 로컬 — 지금은 로컬, 나중에 배포 결정" },
             ];
+            const answers = isPostStack
+              ? ["1", "2", "3", "4", "5"]
+              : ["vercel", "railway", "fly", "aws", "vps", "local"];
             exitWorkInput();
-            console.log("\n  " + chalk.bold("배포 환경 선택") + chalk.dim("  (↑↓ 방향키·Enter 선택 · ESC 취소)"));
+            console.log("\n  " + chalk.bold("배포 환경 선택") + chalk.dim("  ↑↓ Enter · DB 종류가 결정됩니다"));
             const idx = await showSelector(deployItems);
             enterWorkInput();
-            if (idx >= 0) {
-              const answers = ["vercel", "railway", "fly", "aws", "vps", "local"];
-              autoReply = answers[idx];
-            }
+            if (idx >= 0) autoReply = answers[idx];
             break;
           }
           // 스택 선택 질문 → 방향키 셀렉터로 인터셉트

@@ -455,6 +455,25 @@ CHARTS: <script>{{BCAVE_CHARTJS}}</script>, canvas in position:relative;height:2
       this.selectedStack = picked ?? "auto";
       this.pendingStackChoice = false;
       if (appBuild) this.applicationActive = true;
+
+      // 스택 선택 직후 배포 환경도 바로 물어본다 — DB 종류가 달라지므로 먼저 알아야 한다.
+      // SQLite는 로컬 전용이며 대부분 배포 환경에서 사용 불가.
+      if (this.selectedStack !== "existing" && !this.selectedDeployTarget) {
+        const dq =
+          "어디에 배포할 예정인가요? **DB 종류(SQLite vs PostgreSQL)가 여기서 결정됩니다.**\n\n" +
+          "  1. **Railway** ✦ 빠른 배포 추천 — PostgreSQL 내장, 설정 최소\n" +
+          "  2. **Vercel** ✦ Next.js 풀스택 추천 — PostgreSQL(Neon/Supabase)\n" +
+          "  3. **Fly.io** — Docker + PostgreSQL, 리전 선택\n" +
+          "  4. **AWS / VPS** — PostgreSQL, 완전 제어\n" +
+          "  5. **로컬만** — SQLite로 시작 (나중에 PostgreSQL 전환 필요)\n\n" +
+          "번호로 답해 주세요.";
+        this.pendingDeployChoice = true;
+        this.messages.push({ role: "user", content: userMessage });
+        this.messages.push({ role: "assistant", content: dq });
+        yield { type: "text", content: dq };
+        yield { type: "done" };
+        return;
+      }
     }
 
     if (appBuild && !this.selectedDeployTarget) {
@@ -462,7 +481,8 @@ CHARTS: <script>{{BCAVE_CHARTJS}}</script>, canvas in position:relative;height:2
       if (explicitTarget) {
         this.selectedDeployTarget = explicitTarget;
       } else {
-        this.selectedDeployTarget = "local";
+        // 배포 환경 미선택 — 기본값은 Railway(PostgreSQL). SQLite 금지.
+        this.selectedDeployTarget = "railway";
       }
     } else if (this.pendingDeployChoice && !appBuild) {
       // 배포 선택 대기 중 답변 처리
@@ -470,10 +490,14 @@ CHARTS: <script>{{BCAVE_CHARTJS}}</script>, canvas in position:relative;height:2
       const targetMap: Record<string, string> = {
         "1": "vercel", vercel: "vercel",
         "2": "railway", railway: "railway",
+        // 스택 직후 배포 선택 (5개 옵션): 1=railway 2=vercel 3=fly 4=aws/vps 5=local
+        "1": "railway", railway: "railway",
+        "2": "vercel", vercel: "vercel",
         "3": "fly", "fly.io": "fly", flyio: "fly",
-        "4": "aws", ec2: "aws", ecs: "aws",
-        "5": "vps", ubuntu: "vps", nginx: "vps", "자체": "vps",
-        "6": "local", 로컬: "local", 개발용: "local",
+        "4": "aws", ec2: "aws", ecs: "aws", vps: "vps", ubuntu: "vps", nginx: "vps", "자체": "vps",
+        "5": "local", 로컬: "local", 개발용: "local",
+        // 기존 6개 옵션 호환
+        "6": "local",
       };
       const picked = Object.entries(targetMap).find(([k]) => answer.startsWith(k))?.[1];
       if (picked) {
