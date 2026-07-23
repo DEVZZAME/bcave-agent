@@ -173,6 +173,33 @@ describe("SessionModeRunner", () => {
     fs.rmSync(root, { recursive: true, force: true });
   });
 
+  it("starts the server for an explicitly specified project path", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "bcave-session-explicit-"));
+    const service = path.join(root, "1session", "project", "stylemetrics");
+    fs.mkdirSync(path.join(service, "node_modules"), { recursive: true });
+    fs.writeFileSync(path.join(service, "package.json"), '{"scripts":{"start":"node server.js"}}');
+    let startedPath = "";
+    const runner = new SessionModeRunner(root, {
+      delayMs: 0,
+      startService: async (projectPath) => {
+        startedPath = projectPath;
+        return "[SERVER_STARTED] http://localhost:5300\nPID: 9";
+      },
+    });
+    const events = await collect(runner, `${service} 서버 실행해줘`);
+    expect(startedPath).toBe(service);
+    expect(events.some((event) => event.type === "text" && event.content.includes("http://localhost:5300"))).toBe(true);
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+
+  it("reports an error when the specified path has no package.json", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "bcave-session-badpath-"));
+    const runner = new SessionModeRunner(root, { delayMs: 0 });
+    const events = await collect(runner, `${path.join(root, "nope", "service")} 서버 실행해줘`);
+    expect(events[0]).toMatchObject({ type: "error" });
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+
   it("does not start a server before a prepared service exists", async () => {
     const runner = new SessionModeRunner(process.cwd(), { delayMs: 0 });
     const events = await collect(runner, "서버 실행해줘");

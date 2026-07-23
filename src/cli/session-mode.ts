@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
@@ -46,6 +47,15 @@ function referencedPath(message: string): string {
   return message.match(/(?:\/[^ \n\r\t"'`]+)+\.(?:xlsx|xls|xlsm|csv|tsv|ods|json)/i)?.[0] ?? "";
 }
 
+/** 서버 실행 요청에 명시된 프로젝트 디렉터리 경로(절대/홈/상대)를 뽑아낸다. 데이터·산출 파일 경로는 제외. */
+function referencedDirectory(message: string): string {
+  const match = message.match(/(?:~|\.{1,2})?(?:\/[^\s"'`]+)+/);
+  if (!match) return "";
+  const raw = match[0];
+  if (/\.(?:xlsx|xls|xlsm|csv|tsv|ods|json|html?|txt|md)$/i.test(raw)) return "";
+  return raw.startsWith("~") ? path.join(os.homedir(), raw.slice(1)) : raw;
+}
+
 export class SessionModeRunner {
   private readonly dashboardRoot: string;
   private readonly dashboardUpdateRoot: string;
@@ -60,6 +70,7 @@ export class SessionModeRunner {
   private lastDashboardOutput = "";
   private lastProjectOutput = "";
   private lastServiceUrl = "";
+  private readonly startedUrls = new Map<string, string>();
 
   constructor(private readonly cwd: string, options: SessionModeOptions = {}) {
     const assetRoot = resolveSessionAssetRoot();
@@ -193,22 +204,33 @@ export class SessionModeRunner {
     yield { type: "done" };
   }
 
-  private async *startPreparedService(): AsyncGenerator<AgentEvent> {
-    if (!this.lastProjectOutput || !fs.existsSync(path.join(this.lastProjectOutput, "package.json"))) {
-      yield { type: "error", message: "먼저 Session mode에서 패션 회사용 서비스를 생성해 주세요." };
+  private resolveProjectPath(target: string): string {
+    return path.isAbsolute(target) ? target : path.resolve(this.cwd, target);
+  }
+
+  private async *startPreparedService(target = ""): AsyncGenerator<AgentEvent> {
+    const project = target ? this.resolveProjectPath(target) : this.lastProjectOutput;
+    if (!project || !fs.existsSync(path.join(project, "package.json"))) {
+      yield {
+        type: "error",
+        message: target
+          ? `해당 경로에서 실행할 서비스를 찾을 수 없습니다: ${project} (package.json 없음)`
+          : "먼저 Session mode에서 패션 회사용 서비스를 생성하거나, 실행할 프로젝트 경로를 명시해 주세요.",
+      };
       yield { type: "done" };
       return;
     }
-    if (this.lastServiceUrl) {
-      yield { type: "text", content: `서버 실행 중: ${this.lastServiceUrl}` };
+    const running = this.startedUrls.get(project);
+    if (running) {
+      yield { type: "text", content: `서버 실행 중: ${running}` };
       yield { type: "done" };
       return;
     }
 
     // 배포 클론에는 프로젝트 node_modules가 없으므로(루트 .gitignore가 제외) 최초 1회 설치한다.
-    if (!fs.existsSync(path.join(this.lastProjectOutput, "node_modules"))) {
+    if (!fs.existsSync(path.join(project, "node_modules"))) {
       yield { type: "tool_start", name: "shell_exec", args: { command: "npm install" } };
-      const installResult = await this.installDeps(this.lastProjectOutput);
+      const installResult = await this.installDeps(project);
       yield { type: "tool_result", name: "shell_exec", result: installResult };
       if (/^(?:Exit code|Error:)/.test(installResult)) {
         yield { type: "error", message: `의존성 설치에 실패했습니다.\n${installResult}` };
@@ -218,15 +240,17 @@ export class SessionModeRunner {
     }
 
     yield { type: "tool_start", name: "shell_exec", args: { command: "npm start" } };
-    const result = await this.startService(this.lastProjectOutput);
+    const result = await this.startService(project);
     yield { type: "tool_result", name: "shell_exec", result };
     if (!result.startsWith("[SERVER_STARTED]")) {
       yield { type: "error", message: result };
       yield { type: "done" };
       return;
     }
-    this.lastServiceUrl = result.match(/https?:\/\/[^\s]+/)?.[0] ?? "";
-    yield { type: "text", content: `서버 실행 완료: ${this.lastServiceUrl || this.lastProjectOutput}` };
+    const url = result.match(/https?:\/\/[^\s]+/)?.[0] ?? "";
+    this.startedUrls.set(project, url || project);
+    this.lastServiceUrl = url;
+    yield { type: "text", content: `서버 실행 완료: ${url || project}` };
     yield { type: "done" };
   }
 
@@ -239,7 +263,7 @@ export class SessionModeRunner {
     }
     const serverStartIntent = /(?:서버.{0,8}(?:실행|켜|띄워|시작)|실행해\s*줘|실행해\s*주세요|run\s+(?:the\s+)?server|start\s+(?:the\s+)?server)/i.test(normalized);
     if (serverStartIntent) {
-      yield* this.startPreparedService();
+      yield* this.startPreparedService(referencedDirectory(normalized));
       return;
     }
     const editIntent = /(?:수정|변경|고쳐|바꿔|업데이트|update|edit|modify)/i.test(normalized);
