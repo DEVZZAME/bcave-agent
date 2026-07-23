@@ -114,7 +114,9 @@ function cycleMode(): void {
   const idx = MODE_ORDER.indexOf(mode);
   mode = MODE_ORDER[(idx + 1) % MODE_ORDER.length];
   rebuildCM();
-  process.stdout.write("\r\x1b[2K");
+  const state = rl as unknown as { _prompt: string; _refreshLine?: () => void };
+  state._prompt = inputPromptLabel();
+  state._refreshLine?.();
 }
 
 // ─── Slash Commands ────────────────────────────────────
@@ -172,12 +174,7 @@ process.stdin.on("keypress", (str: string, key: readline.Key) => {
   const rlState = rl as unknown as { line: string; cursor: number; _refreshLine?: () => void };
   const action = globalKeyAction(str, key, selectorActive || authInputActive || workSession.processing, rlState.line ?? "");
   if (action === "cycle-mode") {
-    process.stdout.write("\r\x1b[2K");
     cycleMode();
-    setImmediate(() => {
-      (rl as unknown as { line: string }).line = "";
-      rl.write("\n");
-    });
     return;
   }
   // ESC: 현재 입력 전체 지우기 (작업 중 아닐 때)
@@ -225,14 +222,18 @@ function shortPath(p: string): string {
   return shortenPath(p, MODE_INFO[mode].label, getTermWidth(), os.homedir());
 }
 
-function prompt(): void {
+function inputPromptLabel(): string {
   const modeInfo = MODE_INFO[mode];
   const modeTag = rlWrap(modeInfo.color(modeInfo.label));
   const cwd = shortPath(safeCwd());
+  return `${modeTag} ${rlWrap(chalk.dim(cwd))} ${rlWrap(chalk.bold(">"))} `;
+}
+
+function prompt(): void {
   const separator = chalk.dim("─".repeat(getTermWidth()));
   console.log(separator);
   // rlWrap 으로 ANSI 코드를 비표시 영역으로 표시 → readline 이 폭을 정확히 계산
-  rl.question(`${modeTag} ${rlWrap(chalk.dim(cwd))} ${rlWrap(chalk.bold(">"))} `, (answer) => {
+  rl.question(inputPromptLabel(), (answer) => {
     handleInput(answer);
   });
 }
