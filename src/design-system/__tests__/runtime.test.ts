@@ -24,6 +24,14 @@ describe("BCAVE design pipeline", () => {
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
+  it("reuses the most recent artifact when a follow-up edit omits its filename", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bcave-design-followup-"));
+    fs.writeFileSync(path.join(dir, "dashboard.html"), "<!-- BCAVE:ASSET ui.css -->", "utf8");
+    expect(detectDesignSystemFromRequest("아까 만든 대시보드에서 hero를 제거해줘", dir)).toBe("bcave");
+    expect(detectDesignSystemFromRequest("새 대시보드를 만들어줘", dir)).toBeNull();
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
   it("assembles structured body/app fields without code fences", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bcave-design-parts-"));
     const file = path.join(dir, "dashboard.html");

@@ -116,6 +116,22 @@ describe("ConversationManager", () => {
     await edit.return(undefined);
   });
 
+  it("does not ask again after restarting when an existing dashboard is edited", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bcave-followup-session-"));
+    fs.writeFileSync(path.join(dir, "dashboard.html"), "<!-- BCAVE:ASSET ui.css -->", "utf8");
+    const cm = new ConversationManager(config, new PermissionManager("yolo"), dir);
+    const edit = cm.run("아까 만든 대시보드에서 hero를 제거해줘");
+    expect((await edit.next()).value).toMatchObject({ type: "model" });
+    expect(cm.getHistory().some((message) =>
+      message.role === "assistant" && String(message.content).includes("디자인 시스템을 선택"),
+    )).toBe(false);
+    expect(cm.getHistory().some((message) =>
+      message.role === "system" && String(message.content).includes("BCAVE 디자인 시스템 강제 파이프라인"),
+    )).toBe(true);
+    await edit.return(undefined);
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
   it("does not let a stale design choice intercept a port troubleshooting request", async () => {
     const noDefault = { ...config, designSystem: "" };
     const cm = new ConversationManager(noDefault, new PermissionManager("yolo"), process.cwd());

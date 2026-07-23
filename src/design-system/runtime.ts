@@ -55,6 +55,35 @@ export function detectDesignSystemFromRequest(message: string, cwd: string): str
     const detected = detectDesignSystemFromArtifact(candidate);
     if (detected) return detected;
   }
+
+  // 새 CLI 세션에서는 직전 대화 상태가 없을 수 있다. 파일명을 생략한 후속 수정 요청에
+  // 한해서 현재 폴더에서 가장 최근에 수정된 디자인 산출물을 작업 대상으로 이어받는다.
+  const editIntent = /(?:수정|제거|삭제|빼\s*줘|빼\s*주세요|없애|바꿔|변경|교체|추가|보완|개선|디벨롭|develop|edit|modify|remove|delete|update|replace)/i.test(message);
+  const existingArtifact = /(?:대시보드|dashboard|리포트|report|화면|페이지|html|파일|결과물|산출물|아까\s*(?:만든|생성한)|방금\s*(?:만든|생성한)|그거|그것)/i.test(message);
+  if (!editIntent || !existingArtifact) return null;
+
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(cwd, { withFileTypes: true });
+  } catch {
+    return null;
+  }
+  const recentArtifacts = entries
+    .filter((entry) => entry.isFile() && /\.html?$/i.test(entry.name))
+    .map((entry) => {
+      const file = path.join(cwd, entry.name);
+      try {
+        return { file, mtimeMs: fs.statSync(file).mtimeMs };
+      } catch {
+        return null;
+      }
+    })
+    .filter((entry): entry is { file: string; mtimeMs: number } => entry !== null)
+    .sort((a, b) => b.mtimeMs - a.mtimeMs);
+  for (const entry of recentArtifacts) {
+    const detected = detectDesignSystemFromArtifact(entry.file);
+    if (detected) return detected;
+  }
   return null;
 }
 
