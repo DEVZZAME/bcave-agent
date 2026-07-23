@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>로그인 · Threadly</title>
+  <link rel="stylesheet" href="/css/styles.css" />
+</head>
+<body>
+  <div class="auth-wrap">
+    <div class="auth-hero">
+      <div class="brand">Thread<span>ly</span></div>
+      <h1>패션 조직을 위한<br />사내 지식검색 AI &amp; 온보딩</h1>
+      <p>흩어진 사내 문서를 한 곳에서 검색하고, 부서별 온보딩을 체계적으로 완주하세요.</p>
+      <ul>
+        <li>자연어로 묻는 AI 지식검색</li>
+        <li>IT · 디자인 · 마케팅 부서별 지식베이스</li>
+        <li>신규 입사자 온보딩 체크리스트</li>
+      </ul>
+    </div>
+    <div class="auth-form-side">
+      <div class="auth-card">
+        <h2>로그인</h2>
+        <p class="sub">계정으로 로그인하여 시작하세요.</p>
+        <div id="alert" class="alert error"></div>
+        <form id="loginForm">
+          <div class="field">
+            <label for="email">이메일</label>
+            <input type="email" id="email" value="minji.kim@threadly.co" placeholder="name@threadly.co" autocomplete="username" required />
+          </div>
+          <div class="field">
+            <label for="password">비밀번호</label>
+            <input type="password" id="password" value="threadly123" placeholder="••••••••" autocomplete="current-password" required />
+          </div>
+          <button type="submit" class="btn coral" id="submitBtn">로그인</button>
+        </form>
+        <p class="auth-switch">계정이 없으신가요? <a href="/signup">회원가입</a></p>
+        <p class="auth-switch" style="margin-top:8px;font-size:13px;">
+          데모 계정: <b>minji.kim@threadly.co</b> / <b>threadly123</b>
+        </p>
+      </div>
+    </div>
+  </div>
+  <script>
+    const form = document.getElementById('loginForm');
+    const alertBox = document.getElementById('alert');
+    const btn = document.getElementById('submitBtn');
+
+    function showError(msg) {
+      alertBox.textContent = msg;
+      alertBox.className = 'alert error show';
+    }
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      btn.disabled = true;
+      btn.textContent = '로그인 중...';
+      alertBox.className = 'alert';
+      try {
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: document.getElementById('email').value.trim(),
+            password: document.getElementById('password').value,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || '로그인에 실패했습니다.');
+        window.location.href = '/';
+      } catch (err) {
+        showError(err.message);
+        btn.disabled = false;
+        btn.textContent = '로그인';
+      }
+    });
+  </script>
+</body>
+</html>

@@ -96,6 +96,11 @@ git clone --depth 1 --quiet "$REPO_URL" "$TEMP_DIR"
 
 step "의존성 설치"
 (cd "$TEMP_DIR" && npm ci --silent --no-fund --no-audit)
+step "Session mode 프로젝트 준비"
+for session_project in "$TEMP_DIR"/assets/session-mode/projects/*; do
+    [ -f "$session_project/package-lock.json" ] || continue
+    (cd "$session_project" && npm ci --silent --no-fund --no-audit)
+done
 step "빌드"
 (cd "$TEMP_DIR" && npm run build --silent)
 
@@ -103,6 +108,11 @@ step "설치본 검증"
 [ -f "$TEMP_DIR/$ENTRY_REL" ] || { fail "빌드 엔트리가 생성되지 않았습니다: $ENTRY_REL"; exit 1; }
 [ -d "$TEMP_DIR/node_modules" ] || { fail "node_modules가 생성되지 않았습니다."; exit 1; }
 [ -d "$TEMP_DIR/assets/design-systems" ] || { fail "디자인 시스템 자산이 누락됐습니다."; exit 1; }
+[ -f "$TEMP_DIR/assets/session-mode/dashboards/bcave-dashboard.html" ] || { fail "Session mode BCAVE 대시보드가 누락됐습니다."; exit 1; }
+[ -f "$TEMP_DIR/assets/session-mode/dashboards/axis-dashboard.html" ] || { fail "Session mode AXIS 대시보드가 누락됐습니다."; exit 1; }
+for session_project in roundfit stylemetrics threadly; do
+    [ -d "$TEMP_DIR/assets/session-mode/projects/$session_project/node_modules" ] || { fail "Session mode 프로젝트 의존성이 누락됐습니다: $session_project"; exit 1; }
+done
 node "$TEMP_DIR/$ENTRY_REL" --help >/dev/null
 ok "실행 검증 통과"
 

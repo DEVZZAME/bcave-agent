@@ -1,0 +1,28 @@
+<%- include('../partials/header') %>
+<div class="page-head">
+  <h1>라운딩 이력</h1>
+  <a href="/roundings/new" class="btn btn-primary">+ 라운딩 작성</a>
+</div>
+
+<section class="card">
+  <% if (roundings.length === 0) { %>
+    <p class="muted">아직 라운딩 기록이 없습니다.</p>
+  <% } else { %>
+  <table class="table">
+    <thead><tr><th>방문일</th><th>매장</th><th>담당자</th><th>상태</th><th>점수</th><th>요약</th></tr></thead>
+    <tbody>
+      <% roundings.forEach(r => { %>
+      <tr onclick="location.href='/roundings/<%= r.id %>'" class="clickable">
+        <td><%= r.visited_at %></td>
+        <td><strong><%= r.store_name %></strong> <code><%= r.store_code %></code></td>
+        <td><%= r.user_name %></td>
+        <td><span class="tag tag-<%= r.status %>"><%= r.status === 'draft' ? '작성중' : '완료' %></span></td>
+        <td><span class="score-badge s<%= Math.round(r.overall_score) %>"><%= r.overall_score %></span></td>
+        <td class="ellipsis"><%= r.summary || '-' %></td>
+      </tr>
+      <% }) %>
+    </tbody>
+  </table>
+  <% } %>
+</section>
+<%- include('../partials/footer') %>

@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Threadly · 사내 지식검색 &amp; 온보딩</title>
+  <link rel="stylesheet" href="/css/styles.css" />
+</head>
+<body>
+  <div class="app" id="app" style="display:none;">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="brand">Thread<span>ly</span></div>
+      <button class="nav-item active" data-view="home"><span class="ic">🏠</span> 홈</button>
+      <button class="nav-item" data-view="search"><span class="ic">🔍</span> AI 지식검색</button>
+      <button class="nav-item" data-view="docs"><span class="ic">📚</span> 지식베이스</button>
+      <button class="nav-item" data-view="onboarding"><span class="ic">✅</span> 온보딩</button>
+      <div class="sidebar-foot">
+        <div class="user-chip">
+          <div class="avatar" id="userAvatar">?</div>
+          <div class="meta">
+            <div class="n" id="userName">-</div>
+            <div class="d" id="userDept">-</div>
+          </div>
+        </div>
+        <button class="nav-item" id="logoutBtn" style="margin-top:8px;"><span class="ic">↩</span> 로그아웃</button>
+      </div>
+    </aside>
+
+    <!-- Main -->
+    <main class="main">
+      <!-- HOME -->
+      <section class="view active" id="view-home">
+        <div class="page-head">
+          <h1 id="welcomeTitle">안녕하세요 👋</h1>
+          <p>오늘도 좋은 하루 되세요. 필요한 지식을 빠르게 찾아보세요.</p>
+        </div>
+        <div class="grid cols-3" id="statCards"></div>
+
+        <div class="section-title">온보딩 진행 상황</div>
+        <div class="card" id="homeOnboarding"><div class="loading"><div class="spinner"></div>불러오는 중...</div></div>
+
+        <div class="grid cols-2" style="margin-top:16px;">
+          <div>
+            <div class="section-title">인기 문서</div>
+            <div id="popularDocs"></div>
+          </div>
+          <div>
+            <div class="section-title">부서별 문서 수</div>
+            <div class="card" id="deptStats"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- SEARCH -->
+      <section class="view" id="view-search">
+        <div class="page-head">
+          <h1>AI 지식검색</h1>
+          <p>궁금한 것을 자연어로 물어보세요. 사내 문서를 근거로 답해드립니다.</p>
+        </div>
+        <div class="search-box">
+          <input type="text" id="searchInput" placeholder="예) 연차는 어떻게 신청하나요?" />
+          <button class="btn coral" id="searchBtn">검색</button>
+        </div>
+        <div class="chips" id="suggestChips"></div>
+        <div id="searchResult"></div>
+      </section>
+
+      <!-- DOCS -->
+      <section class="view" id="view-docs">
+        <div class="page-head">
+          <h1>지식베이스</h1>
+          <p>전사 공용 및 부서별 문서를 탐색하세요.</p>
+        </div>
+        <div class="toolbar">
+          <select id="filterDept"><option value="">전체 부서</option></select>
+          <select id="filterCat"><option value="">전체 카테고리</option></select>
+          <input type="text" id="filterQ" placeholder="문서 검색..." />
+          <button class="btn" id="newDocBtn" style="width:auto;padding:0 18px;">+ 새 문서</button>
+        </div>
+        <div id="docList"></div>
+      </section>
+
+      <!-- ONBOARDING -->
+      <section class="view" id="view-onboarding">
+        <div class="page-head">
+          <h1>온보딩</h1>
+          <p>입사 후 완료해야 할 항목들을 체크하며 진행하세요.</p>
+        </div>
+        <div class="card progress-wrap" id="obProgress"></div>
+        <div id="obGroups"></div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Doc modal -->
+  <div class="modal-bg" id="modalBg">
+    <div class="modal" id="modalBox"></div>
+  </div>
+
+  <script src="/js/app.js"></script>
+</body>
+</html>

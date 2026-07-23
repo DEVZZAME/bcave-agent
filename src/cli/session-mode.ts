@@ -1,10 +1,12 @@
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
 import type { AgentEvent } from "../agent/conversation.js";
 
-const DEFAULT_DASHBOARD_ROOT = "/Users/bcave/Desktop/0session/dashboard";
-const DEFAULT_PROJECT_ROOT = "/Users/bcave/Desktop/0session/project";
+export function resolveSessionAssetRoot(moduleUrl = import.meta.url): string {
+  return path.resolve(path.dirname(fileURLToPath(moduleUrl)), "..", "..", "assets", "session-mode");
+}
 
 export interface SessionModeOptions {
   dashboardRoot?: string;
@@ -49,8 +51,9 @@ export class SessionModeRunner {
   private dashboardInput = "";
 
   constructor(private readonly cwd: string, options: SessionModeOptions = {}) {
-    this.dashboardRoot = options.dashboardRoot ?? DEFAULT_DASHBOARD_ROOT;
-    this.projectRoot = options.projectRoot ?? DEFAULT_PROJECT_ROOT;
+    const assetRoot = resolveSessionAssetRoot();
+    this.dashboardRoot = options.dashboardRoot ?? path.join(assetRoot, "dashboards");
+    this.projectRoot = options.projectRoot ?? path.join(assetRoot, "projects");
     this.delayMs = Math.max(0, options.delayMs ?? 30_000);
     this.random = options.random ?? Math.random;
   }
@@ -161,4 +164,3 @@ export class SessionModeRunner {
     yield { type: "done" };
   }
 }
-

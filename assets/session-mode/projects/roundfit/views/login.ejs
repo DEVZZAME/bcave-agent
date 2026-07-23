@@ -1,0 +1,21 @@
+<%- include('partials/header') %>
+<div class="auth-card">
+  <div class="auth-logo">Round<span>Fit</span></div>
+  <p class="auth-sub">패션 매장 라운딩 관리 서비스</p>
+
+  <% if (error) { %><div class="alert alert-error"><%= error %></div><% } %>
+
+  <form action="/login" method="post" class="form">
+    <label>이메일
+      <input type="email" name="email" value="<%= form.email || '' %>" placeholder="you@company.com" required autofocus />
+    </label>
+    <label>비밀번호
+      <input type="password" name="password" value="<%= form.password || '' %>" placeholder="••••••••" required />
+    </label>
+    <button type="submit" class="btn btn-primary btn-block">로그인</button>
+  </form>
+
+  <p class="auth-hint">테스트 계정이 미리 입력되어 있습니다. 그대로 <strong>로그인</strong>을 눌러보세요.</p>
+  <p class="auth-foot">아직 계정이 없으신가요? <a href="/signup">회원가입</a></p>
+</div>
+<%- include('partials/footer') %>

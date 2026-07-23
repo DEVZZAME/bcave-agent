@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>StyleMetrics — 대시보드</title>
+  <link rel="stylesheet" href="/css/styles.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <div class="app">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="brand"><span class="brand-mark">◆</span> StyleMetrics</div>
+      <nav class="side-nav">
+        <a class="nav-item active" data-view="overview">개요</a>
+        <a class="nav-item" data-view="products">상품</a>
+        <a class="nav-item" data-view="categories">카테고리</a>
+        <a class="nav-item" data-view="channels">채널</a>
+      </nav>
+      <div class="side-foot">
+        <div class="user-chip">
+          <div class="avatar" id="user-avatar">·</div>
+          <div>
+            <div class="user-name" id="user-name">—</div>
+            <div class="user-email" id="user-email">—</div>
+          </div>
+        </div>
+        <button id="logout-btn" class="btn-ghost">로그아웃</button>
+      </div>
+    </aside>
+
+    <!-- Main -->
+    <main class="content">
+      <header class="topbar">
+        <div>
+          <h1 id="view-title">상품 성과</h1>
+          <p class="subtitle" id="range-label">—</p>
+        </div>
+        <div class="range-toggle" id="range-toggle">
+          <button data-days="7">7일</button>
+          <button data-days="30" class="active">30일</button>
+          <button data-days="90">90일</button>
+          <button data-days="180">180일</button>
+        </div>
+      </header>
+
+      <!-- ===================== 개요 ===================== -->
+      <div class="view active" id="view-overview">
+        <section class="kpi-grid" id="kpi-grid"></section>
+
+        <section class="chart-row">
+          <div class="card chart-card wide">
+            <div class="card-head"><h3>매출 · 수량 추이</h3></div>
+            <div class="chart-box"><canvas id="trendChart"></canvas></div>
+          </div>
+          <div class="card chart-card">
+            <div class="card-head"><h3>카테고리별 매출</h3></div>
+            <div class="chart-box"><canvas id="ovCategoryChart"></canvas></div>
+          </div>
+        </section>
+
+        <section class="chart-row">
+          <div class="card chart-card">
+            <div class="card-head"><h3>채널별 매출</h3></div>
+            <div class="chart-box"><canvas id="ovChannelChart"></canvas></div>
+          </div>
+          <div class="card chart-card wide">
+            <div class="card-head"><h3>인기 상품</h3></div>
+            <div class="chart-box"><canvas id="ovTopChart"></canvas></div>
+          </div>
+        </section>
+      </div>
+
+      <!-- ===================== 상품 ===================== -->
+      <div class="view" id="view-products">
+        <section class="card chart-card">
+          <div class="card-head"><h3>인기 상품 (매출 기준)</h3></div>
+          <div class="chart-box tall"><canvas id="prodTopChart"></canvas></div>
+        </section>
+
+        <section class="card table-card">
+          <div class="card-head table-head">
+            <h3>상품 상세</h3>
+            <div class="filters">
+              <select id="f-category"><option value="">전체 카테고리</option></select>
+              <select id="f-gender"><option value="">전체 성별</option></select>
+              <select id="f-season"><option value="">전체 시즌</option></select>
+            </div>
+          </div>
+          <div class="table-scroll">
+            <table class="data-table" id="product-table">
+              <thead>
+                <tr>
+                  <th data-sort="name">상품</th>
+                  <th>카테고리</th>
+                  <th data-sort="units" class="num">수량</th>
+                  <th data-sort="returnRate" class="num">반품률</th>
+                  <th data-sort="revenue" class="num sorted-desc">매출</th>
+                  <th data-sort="margin" class="num">마진</th>
+                  <th class="num">전환율</th>
+                </tr>
+              </thead>
+              <tbody id="product-tbody"></tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+
+      <!-- ===================== 카테고리 ===================== -->
+      <div class="view" id="view-categories">
+        <section class="chart-row">
+          <div class="card chart-card">
+            <div class="card-head"><h3>카테고리별 매출 비중</h3></div>
+            <div class="chart-box"><canvas id="catChart"></canvas></div>
+          </div>
+          <div class="card chart-card wide">
+            <div class="card-head"><h3>카테고리별 매출</h3></div>
+            <div class="chart-box"><canvas id="catBarChart"></canvas></div>
+          </div>
+        </section>
+
+        <section class="card table-card">
+          <div class="card-head"><h3>카테고리 성과</h3></div>
+          <div class="table-scroll">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>카테고리</th>
+                  <th class="num">매출</th>
+                  <th class="num">비중</th>
+                  <th class="num">수량</th>
+                  <th class="num">마진</th>
+                  <th class="num">반품률</th>
+                  <th class="num">전환율</th>
+                </tr>
+              </thead>
+              <tbody id="cat-tbody"></tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+
+      <!-- ===================== 채널 ===================== -->
+      <div class="view" id="view-channels">
+        <section class="chart-row">
+          <div class="card chart-card">
+            <div class="card-head"><h3>채널별 매출 비중</h3></div>
+            <div class="chart-box"><canvas id="chanChart"></canvas></div>
+          </div>
+          <div class="card chart-card wide">
+            <div class="card-head"><h3>채널별 매출</h3></div>
+            <div class="chart-box"><canvas id="chanBarChart"></canvas></div>
+          </div>
+        </section>
+
+        <section class="card table-card">
+          <div class="card-head"><h3>채널 성과</h3></div>
+          <div class="table-scroll">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>채널</th>
+                  <th class="num">매출</th>
+                  <th class="num">비중</th>
+                  <th class="num">수량</th>
+                  <th class="num">마진</th>
+                  <th class="num">반품률</th>
+                  <th class="num">전환율</th>
+                </tr>
+              </thead>
+              <tbody id="chan-tbody"></tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <script src="/js/dashboard.js"></script>
+</body>
+</html>

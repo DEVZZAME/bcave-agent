@@ -1,0 +1,74 @@
+<%- include('partials/header') %>
+<div class="page-head">
+  <h1>대시보드</h1>
+  <a href="/roundings/new" class="btn btn-primary">+ 라운딩 작성</a>
+</div>
+
+<div class="stat-grid">
+  <div class="stat-card">
+    <div class="stat-num"><%= stats.storeCount %></div>
+    <div class="stat-label">등록 매장</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-num"><%= stats.roundingCount %></div>
+    <div class="stat-label">누적 라운딩</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-num"><%= stats.thisMonth %></div>
+    <div class="stat-label">이번 달 라운딩</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-num"><%= stats.avgScore %><small>/5</small></div>
+    <div class="stat-label">평균 점수</div>
+  </div>
+</div>
+
+<div class="grid-2">
+  <section class="card">
+    <div class="card-head"><h2>최근 라운딩</h2><a href="/roundings" class="link">전체보기</a></div>
+    <% if (recent.length === 0) { %>
+      <p class="muted">아직 라운딩 기록이 없습니다.</p>
+    <% } else { %>
+    <table class="table">
+      <thead><tr><th>방문일</th><th>매장</th><th>담당자</th><th>점수</th></tr></thead>
+      <tbody>
+        <% recent.forEach(r => { %>
+        <tr onclick="location.href='/roundings/<%= r.id %>'" class="clickable">
+          <td><%= r.visited_at %></td>
+          <td><%= r.store_name %></td>
+          <td><%= r.user_name %></td>
+          <td><span class="score-badge s<%= Math.round(r.overall_score) %>"><%= r.overall_score %></span></td>
+        </tr>
+        <% }) %>
+      </tbody>
+    </table>
+    <% } %>
+  </section>
+
+  <section class="card">
+    <div class="card-head"><h2>카테고리별 평균</h2></div>
+    <% if (byCategory.length === 0) { %>
+      <p class="muted">데이터가 없습니다.</p>
+    <% } else { %>
+      <% byCategory.forEach(c => { %>
+      <div class="bar-row">
+        <span class="bar-label"><%= c.category %></span>
+        <span class="bar-track"><span class="bar-fill" style="width: <%= (c.avg_score/5*100) %>%"></span></span>
+        <span class="bar-val"><%= c.avg_score %></span>
+      </div>
+      <% }) %>
+    <% } %>
+  </section>
+</div>
+
+<% if (neverVisited.length > 0) { %>
+<section class="card">
+  <div class="card-head"><h2>미방문 매장</h2><span class="muted">라운딩 이력이 없는 매장</span></div>
+  <div class="chip-list">
+    <% neverVisited.forEach(s => { %>
+      <a href="/roundings/new?store_id=<%= s.id %>" class="chip"><%= s.name %> <small><%= s.region || '' %></small></a>
+    <% }) %>
+  </div>
+</section>
+<% } %>
+<%- include('partials/footer') %>

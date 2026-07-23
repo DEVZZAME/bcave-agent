@@ -1,0 +1,72 @@
+<%- include('../partials/header') %>
+<div class="page-head">
+  <h1>라운딩 작성</h1>
+  <a href="/roundings" class="btn btn-ghost">목록으로</a>
+</div>
+
+<% if (error) { %><div class="alert alert-error"><%= error %></div><% } %>
+
+<% if (stores.length === 0) { %>
+  <section class="card">
+    <p class="muted">등록된 매장이 없습니다. 먼저 <a href="/stores/new">매장을 등록</a>해 주세요.</p>
+  </section>
+<% } else { %>
+<form action="/roundings" method="post">
+  <section class="card">
+    <div class="form form-grid">
+      <label>매장 *
+        <select name="store_id" required>
+          <option value="">매장 선택</option>
+          <% stores.forEach(s => { %>
+            <option value="<%= s.id %>" <%= selectedStore === s.id ? 'selected' : '' %>><%= s.name %> (<%= s.code %>)</option>
+          <% }) %>
+        </select>
+      </label>
+      <label>방문일자 *
+        <input type="date" name="visited_at" value="<%= today %>" required />
+      </label>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-head"><h2>점검 항목</h2><span class="muted">각 항목을 1~5점으로 평가</span></div>
+    <% categories.forEach((cat, i) => { %>
+    <div class="check-item">
+      <div class="check-head">
+        <span class="check-cat"><%= cat %></span>
+        <div class="rating" data-idx="<%= i %>">
+          <% for (let v = 1; v <= 5; v++) { %>
+            <label class="star">
+              <input type="radio" name="score_<%= i %>" value="<%= v %>" />
+              <span><%= v %></span>
+            </label>
+          <% } %>
+        </div>
+      </div>
+      <input type="text" name="note_<%= i %>" class="check-note" placeholder="특이사항 / 코멘트 (선택)" />
+    </div>
+    <% }) %>
+  </section>
+
+  <section class="card">
+    <div class="form">
+      <label>종합 요약
+        <textarea name="summary" rows="3" placeholder="전반적인 매장 상태 요약"></textarea>
+      </label>
+      <label>개선 / 조치 사항
+        <textarea name="action_items" rows="3" placeholder="후속 조치가 필요한 항목"></textarea>
+      </label>
+      <label>상태
+        <select name="status">
+          <option value="completed">완료</option>
+          <option value="draft">작성중 (임시저장)</option>
+        </select>
+      </label>
+    </div>
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary">라운딩 저장</button>
+    </div>
+  </section>
+</form>
+<% } %>
+<%- include('../partials/footer') %>

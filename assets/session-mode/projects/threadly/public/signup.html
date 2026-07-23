@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>회원가입 · Threadly</title>
+  <link rel="stylesheet" href="/css/styles.css" />
+</head>
+<body>
+  <div class="auth-wrap">
+    <div class="auth-hero">
+      <div class="brand">Thread<span>ly</span></div>
+      <h1>Threadly 에<br />오신 것을 환영합니다</h1>
+      <p>부서를 선택해 가입하면, 부서 맞춤 온보딩 체크리스트가 자동으로 준비됩니다.</p>
+      <ul>
+        <li>가입 즉시 부서별 온보딩 배정</li>
+        <li>전사 공용 + 부서 지식베이스 접근</li>
+        <li>AI 지식검색으로 빠른 적응</li>
+      </ul>
+    </div>
+    <div class="auth-form-side">
+      <div class="auth-card">
+        <h2>회원가입</h2>
+        <p class="sub">사내 계정을 생성하세요.</p>
+        <div id="alert" class="alert error"></div>
+        <form id="signupForm">
+          <div class="field">
+            <label for="name">이름</label>
+            <input type="text" id="name" placeholder="홍길동" required />
+          </div>
+          <div class="field">
+            <label for="email">이메일</label>
+            <input type="email" id="email" placeholder="name@threadly.co" autocomplete="username" required />
+          </div>
+          <div class="field">
+            <label for="department">부서</label>
+            <select id="department" required>
+              <option value="">부서를 선택하세요</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="jobTitle">직무 (선택)</label>
+            <input type="text" id="jobTitle" placeholder="예: 프론트엔드 개발자" />
+          </div>
+          <div class="field">
+            <label for="password">비밀번호 (6자 이상)</label>
+            <input type="password" id="password" placeholder="••••••••" autocomplete="new-password" required />
+          </div>
+          <button type="submit" class="btn coral" id="submitBtn">가입하기</button>
+        </form>
+        <p class="auth-switch">이미 계정이 있으신가요? <a href="/login">로그인</a></p>
+      </div>
+    </div>
+  </div>
+  <script>
+    const alertBox = document.getElementById('alert');
+    const btn = document.getElementById('submitBtn');
+    const deptSelect = document.getElementById('department');
+
+    function showError(msg) {
+      alertBox.textContent = msg;
+      alertBox.className = 'alert error show';
+    }
+
+    async function loadDepartments() {
+      try {
+        const res = await fetch('/api/auth/departments');
+        const data = await res.json();
+        (data.departments || []).forEach((d) => {
+          const opt = document.createElement('option');
+          opt.value = d.id;
+          opt.textContent = d.name;
+          deptSelect.appendChild(opt);
+        });
+      } catch {
+        showError('부서 목록을 불러오지 못했습니다.');
+      }
+    }
+    loadDepartments();
+
+    document.getElementById('signupForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      btn.disabled = true;
+      btn.textContent = '가입 중...';
+      alertBox.className = 'alert';
+      try {
+        const res = await fetch('/api/auth/signup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: document.getElementById('name').value.trim(),
+            email: document.getElementById('email').value.trim(),
+            departmentId: document.getElementById('department').value,
+            jobTitle: document.getElementById('jobTitle').value.trim(),
+            password: document.getElementById('password').value,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || '가입에 실패했습니다.');
+        window.location.href = '/';
+      } catch (err) {
+        showError(err.message);
+        btn.disabled = false;
+        btn.textContent = '가입하기';
+      }
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,44 @@
+<%- include('../partials/header') %>
+<div class="page-head">
+  <h1><%= mode === 'edit' ? '매장 수정' : '매장 등록' %></h1>
+  <a href="/stores" class="btn btn-ghost">목록으로</a>
+</div>
+
+<% if (error) { %><div class="alert alert-error"><%= error %></div><% } %>
+
+<section class="card">
+  <form action="<%= mode === 'edit' ? '/stores/' + store.id : '/stores' %>" method="post" class="form form-grid">
+    <label>매장 코드 *
+      <input type="text" name="code" value="<%= store.code || '' %>" placeholder="예: ST-001" required />
+    </label>
+    <label>매장명 *
+      <input type="text" name="name" value="<%= store.name || '' %>" placeholder="예: 강남점" required />
+    </label>
+    <label>브랜드
+      <input type="text" name="brand" value="<%= store.brand || '' %>" placeholder="예: RoundFit Women" />
+    </label>
+    <label>지역
+      <input type="text" name="region" value="<%= store.region || '' %>" placeholder="예: 서울" />
+    </label>
+    <label>채널
+      <select name="channel">
+        <% ['', '백화점','아울렛','로드샵','대리점'].forEach(c => { %>
+          <option value="<%= c %>" <%= store.channel === c ? 'selected' : '' %>><%= c || '선택 안 함' %></option>
+        <% }) %>
+      </select>
+    </label>
+    <label>매장 담당자
+      <input type="text" name="manager_name" value="<%= store.manager_name || '' %>" placeholder="예: 김점장" />
+    </label>
+    <label>연락처
+      <input type="text" name="phone" value="<%= store.phone || '' %>" placeholder="예: 02-1234-5678" />
+    </label>
+    <label class="full">주소
+      <input type="text" name="address" value="<%= store.address || '' %>" placeholder="예: 서울시 강남구 ..." />
+    </label>
+    <div class="full form-actions">
+      <button type="submit" class="btn btn-primary"><%= mode === 'edit' ? '수정 저장' : '매장 등록' %></button>
+    </div>
+  </form>
+</section>
+<%- include('../partials/footer') %>

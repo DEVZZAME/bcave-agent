@@ -1,0 +1,45 @@
+<%- include('../partials/header') %>
+<div class="page-head">
+  <h1><%= store.name %> <code class="code-lg"><%= store.code %></code></h1>
+  <div class="head-actions">
+    <a href="/roundings/new?store_id=<%= store.id %>" class="btn btn-primary">+ 라운딩</a>
+    <a href="/stores/<%= store.id %>/edit" class="btn btn-secondary">수정</a>
+    <form action="/stores/<%= store.id %>/delete" method="post" class="inline"
+          onsubmit="return confirm('이 매장과 관련 라운딩이 모두 삭제됩니다. 계속할까요?');">
+      <button type="submit" class="btn btn-danger">삭제</button>
+    </form>
+  </div>
+</div>
+
+<section class="card">
+  <dl class="info-grid">
+    <div><dt>브랜드</dt><dd><%= store.brand || '-' %></dd></div>
+    <div><dt>지역</dt><dd><%= store.region || '-' %></dd></div>
+    <div><dt>채널</dt><dd><%= store.channel || '-' %></dd></div>
+    <div><dt>매장 담당자</dt><dd><%= store.manager_name || '-' %></dd></div>
+    <div><dt>연락처</dt><dd><%= store.phone || '-' %></dd></div>
+    <div class="full"><dt>주소</dt><dd><%= store.address || '-' %></dd></div>
+  </dl>
+</section>
+
+<section class="card">
+  <div class="card-head"><h2>라운딩 이력 (<%= roundings.length %>)</h2></div>
+  <% if (roundings.length === 0) { %>
+    <p class="muted">아직 라운딩 기록이 없습니다.</p>
+  <% } else { %>
+  <table class="table">
+    <thead><tr><th>방문일</th><th>담당자</th><th>상태</th><th>점수</th></tr></thead>
+    <tbody>
+      <% roundings.forEach(r => { %>
+      <tr onclick="location.href='/roundings/<%= r.id %>'" class="clickable">
+        <td><%= r.visited_at %></td>
+        <td><%= r.user_name %></td>
+        <td><span class="tag tag-<%= r.status %>"><%= r.status === 'draft' ? '작성중' : '완료' %></span></td>
+        <td><span class="score-badge s<%= Math.round(r.overall_score) %>"><%= r.overall_score %></span></td>
+      </tr>
+      <% }) %>
+    </tbody>
+  </table>
+  <% } %>
+</section>
+<%- include('../partials/footer') %>

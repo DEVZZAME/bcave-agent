@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title><%= title %> · RoundFit</title>
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+<% if (currentUser) { %>
+<header class="topbar">
+  <a class="brand" href="/dashboard">Round<span>Fit</span></a>
+  <nav class="nav">
+    <a href="/dashboard" class="<%= activePath.startsWith('/dashboard') ? 'active' : '' %>">대시보드</a>
+    <a href="/roundings" class="<%= activePath.startsWith('/roundings') ? 'active' : '' %>">라운딩</a>
+    <a href="/stores" class="<%= activePath.startsWith('/stores') ? 'active' : '' %>">매장</a>
+  </nav>
+  <div class="user-area">
+    <span class="user-name"><%= currentUser.name %> <em class="role role-<%= currentUser.role %>"><%= currentUser.role %></em></span>
+    <form action="/logout" method="post" class="inline">
+      <button type="submit" class="btn btn-ghost btn-sm">로그아웃</button>
+    </form>
+  </div>
+</header>
+<% } %>
+<main class="<%= currentUser ? 'container' : 'auth-wrap' %>">

@@ -143,19 +143,21 @@ PostgreSQL을 사용하는 Railway용 주문 관리 서비스를 만들어줘.
 시연할 작업 폴더에서 다음과 같이 실행합니다.
 
 ```bash
-cd /Users/bcave/Desktop/0session
+mkdir -p ~/Desktop/bcave-demo
+cd ~/Desktop/bcave-demo
 bcave --session-mode
 ```
 
 Session mode는 외부 모델이나 HUB 로그인에 의존하지 않습니다.
 
 - 파일 경로와 함께 대시보드 생성을 요청하면 BCAVE·AXIS 선택 화면을 표시합니다.
-- BCAVE 선택 시 `/Users/bcave/Desktop/0session/dashboard/bcave-dashboard.html`을 약 30초 후 현재 폴더에 복사합니다.
-- AXIS 선택 시 `/Users/bcave/Desktop/0session/dashboard/axis-dashboard.html`을 약 30초 후 현재 폴더에 복사합니다.
-- 패션 회사용 서비스 개발을 요청하면 `/Users/bcave/Desktop/0session/project`의 준비된 프로젝트 중 하나를 무작위로 현재 폴더에 복사합니다.
+- BCAVE 선택 시 설치본에 포함된 `bcave-dashboard.html`을 약 30초 후 현재 폴더에 복사합니다.
+- AXIS 선택 시 설치본에 포함된 `axis-dashboard.html`을 약 30초 후 현재 폴더에 복사합니다.
+- 패션 회사용 서비스 개발을 요청하면 설치본에 포함된 `roundfit`, `stylemetrics`, `threadly` 중 하나를 무작위로 현재 폴더에 복사합니다.
 - 그 밖의 요청은 실행하지 않으며 실제 LLM으로 전환되지 않습니다.
 
-시연 전 준비 파일이 위 경로에 존재하는지 확인하세요.
+시연 자산과 프로젝트 의존성은 BCave 설치·업데이트 과정에서 함께 준비되므로 다른 PC에서도 같은 명령으로 사용할 수 있습니다.
+서비스 시연까지 실행하려면 내장 SQLite를 지원하는 Node.js 22.5 이상을 권장합니다.
 
 ## 4. 대화 중 명령
 

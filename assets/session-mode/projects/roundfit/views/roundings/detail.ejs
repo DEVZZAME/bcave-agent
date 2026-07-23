@@ -1,0 +1,64 @@
+<%- include('../partials/header') %>
+<div class="page-head">
+  <h1>라운딩 상세</h1>
+  <div class="head-actions">
+    <a href="/stores/<%= rounding.store_id %>" class="btn btn-ghost">매장 보기</a>
+    <form action="/roundings/<%= rounding.id %>/delete" method="post" class="inline"
+          onsubmit="return confirm('이 라운딩 기록을 삭제할까요?');">
+      <button type="submit" class="btn btn-danger">삭제</button>
+    </form>
+  </div>
+</div>
+
+<section class="card">
+  <div class="detail-top">
+    <div>
+      <div class="detail-store"><%= rounding.store_name %> <code><%= rounding.store_code %></code></div>
+      <div class="muted"><%= rounding.brand || '' %> <%= rounding.region ? '· ' + rounding.region : '' %></div>
+    </div>
+    <div class="detail-score">
+      <span class="score-badge score-lg s<%= Math.round(rounding.overall_score) %>"><%= rounding.overall_score %></span>
+      <span class="muted">/ 5</span>
+    </div>
+  </div>
+  <dl class="info-grid">
+    <div><dt>방문일</dt><dd><%= rounding.visited_at %></dd></div>
+    <div><dt>담당자</dt><dd><%= rounding.user_name %></dd></div>
+    <div><dt>상태</dt><dd><span class="tag tag-<%= rounding.status %>"><%= rounding.status === 'draft' ? '작성중' : '완료' %></span></dd></div>
+    <div><dt>작성일</dt><dd><%= rounding.created_at %></dd></div>
+  </dl>
+</section>
+
+<section class="card">
+  <div class="card-head"><h2>점검 항목</h2></div>
+  <table class="table">
+    <thead><tr><th>카테고리</th><th>점수</th><th>코멘트</th></tr></thead>
+    <tbody>
+      <% items.forEach(it => { %>
+      <tr>
+        <td><%= it.category %></td>
+        <td>
+          <% if (it.score > 0) { %>
+            <span class="score-badge s<%= it.score %>"><%= it.score %></span>
+          <% } else { %>
+            <span class="muted">미평가</span>
+          <% } %>
+        </td>
+        <td><%= it.note || '-' %></td>
+      </tr>
+      <% }) %>
+    </tbody>
+  </table>
+</section>
+
+<div class="grid-2">
+  <section class="card">
+    <div class="card-head"><h2>종합 요약</h2></div>
+    <p class="pre"><%= rounding.summary || '작성된 요약이 없습니다.' %></p>
+  </section>
+  <section class="card">
+    <div class="card-head"><h2>개선 / 조치 사항</h2></div>
+    <p class="pre"><%= rounding.action_items || '작성된 조치 사항이 없습니다.' %></p>
+  </section>
+</div>
+<%- include('../partials/footer') %>

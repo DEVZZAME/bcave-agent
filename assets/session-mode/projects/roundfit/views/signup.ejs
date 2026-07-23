@@ -1,0 +1,33 @@
+<%- include('partials/header') %>
+<div class="auth-card">
+  <div class="auth-logo">Round<span>Fit</span></div>
+  <p class="auth-sub">계정 만들기</p>
+
+  <% if (error) { %><div class="alert alert-error"><%= error %></div><% } %>
+
+  <form action="/signup" method="post" class="form">
+    <label>이름
+      <input type="text" name="name" value="<%= form.name || '' %>" placeholder="홍길동" required autofocus />
+    </label>
+    <label>이메일
+      <input type="email" name="email" value="<%= form.email || '' %>" placeholder="you@company.com" required />
+    </label>
+    <label>직무
+      <select name="role">
+        <option value="staff" <%= form.role === 'staff' ? 'selected' : '' %>>담당자 (staff)</option>
+        <option value="manager" <%= form.role === 'manager' ? 'selected' : '' %>>매니저 (manager)</option>
+        <option value="admin" <%= form.role === 'admin' ? 'selected' : '' %>>관리자 (admin)</option>
+      </select>
+    </label>
+    <label>비밀번호 <small>(6자 이상)</small>
+      <input type="password" name="password" placeholder="••••••••" required />
+    </label>
+    <label>비밀번호 확인
+      <input type="password" name="passwordConfirm" placeholder="••••••••" required />
+    </label>
+    <button type="submit" class="btn btn-primary btn-block">회원가입</button>
+  </form>
+
+  <p class="auth-foot">이미 계정이 있으신가요? <a href="/login">로그인</a></p>
+</div>
+<%- include('partials/footer') %>

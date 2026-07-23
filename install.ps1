@@ -60,6 +60,18 @@ try {
     & npm.cmd ci --silent --no-fund --no-audit
     if ($LASTEXITCODE -ne 0) { Stop-Install "npm ci 실패 (exit $LASTEXITCODE)" }
 
+    Write-Host "  > Session mode 프로젝트 준비" -ForegroundColor Cyan
+    $SessionProjects = Join-Path $TempDir "assets\session-mode\projects"
+    foreach ($ProjectDir in Get-ChildItem -Path $SessionProjects -Directory) {
+      Push-Location $ProjectDir.FullName
+      try {
+        & npm.cmd ci --silent --no-fund --no-audit
+        if ($LASTEXITCODE -ne 0) { Stop-Install "Session mode 프로젝트 의존성 설치 실패: $($ProjectDir.Name)" }
+      } finally {
+        Pop-Location
+      }
+    }
+
     Write-Host "  > 빌드" -ForegroundColor Cyan
     & npm.cmd run build --silent
     if ($LASTEXITCODE -ne 0) { Stop-Install "빌드 실패 (exit $LASTEXITCODE)" }
@@ -72,6 +84,13 @@ try {
   if (-not (Test-Path $TempEntry -PathType Leaf)) { Stop-Install "빌드 엔트리가 생성되지 않았습니다: $EntryRelative" }
   if (-not (Test-Path (Join-Path $TempDir "node_modules") -PathType Container)) { Stop-Install "node_modules가 생성되지 않았습니다." }
   if (-not (Test-Path (Join-Path $TempDir "assets\design-systems") -PathType Container)) { Stop-Install "디자인 시스템 자산이 누락됐습니다." }
+  if (-not (Test-Path (Join-Path $TempDir "assets\session-mode\dashboards\bcave-dashboard.html") -PathType Leaf)) { Stop-Install "Session mode BCAVE 대시보드가 누락됐습니다." }
+  if (-not (Test-Path (Join-Path $TempDir "assets\session-mode\dashboards\axis-dashboard.html") -PathType Leaf)) { Stop-Install "Session mode AXIS 대시보드가 누락됐습니다." }
+  foreach ($ProjectName in @("roundfit", "stylemetrics", "threadly")) {
+    if (-not (Test-Path (Join-Path $TempDir "assets\session-mode\projects\$ProjectName\node_modules") -PathType Container)) {
+      Stop-Install "Session mode 프로젝트 의존성이 누락됐습니다: $ProjectName"
+    }
+  }
   & node $TempEntry --help *> $null
   if ($LASTEXITCODE -ne 0) { Stop-Install "빌드된 CLI 실행 검증에 실패했습니다." }
 

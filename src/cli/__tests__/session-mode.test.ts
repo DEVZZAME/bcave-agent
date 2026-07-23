@@ -2,7 +2,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { SessionModeRunner } from "../session-mode.js";
+import { pathToFileURL } from "node:url";
+import { resolveSessionAssetRoot, SessionModeRunner } from "../session-mode.js";
 
 async function collect(runner: SessionModeRunner, message: string) {
   const events = [];
@@ -11,6 +12,11 @@ async function collect(runner: SessionModeRunner, message: string) {
 }
 
 describe("SessionModeRunner", () => {
+  it("resolves bundled assets from the installed CLI root", () => {
+    const moduleUrl = pathToFileURL("/opt/bcave/dist/cli/session-mode.js").href;
+    expect(resolveSessionAssetRoot(moduleUrl)).toBe(path.join("/opt/bcave", "assets", "session-mode"));
+  });
+
   it("asks for a design system then copies the selected prepared dashboard", async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "bcave-session-mode-"));
     const prepared = path.join(root, "dashboard");

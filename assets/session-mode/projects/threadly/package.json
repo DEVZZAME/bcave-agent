@@ -1,0 +1,19 @@
+{
+  "name": "threadly",
+  "version": "1.0.0",
+  "description": "Threadly — 패션회사 사내 지식검색 AI + 온보딩 서비스",
+  "type": "commonjs",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "seed": "node src/seed.js",
+    "reset": "node src/seed.js --reset"
+  },
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}

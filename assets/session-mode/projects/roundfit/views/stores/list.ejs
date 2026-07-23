@@ -1,0 +1,37 @@
+<%- include('../partials/header') %>
+<div class="page-head">
+  <h1>매장 관리</h1>
+  <a href="/stores/new" class="btn btn-primary">+ 매장 등록</a>
+</div>
+
+<form action="/stores" method="get" class="searchbar">
+  <input type="text" name="q" value="<%= q %>" placeholder="매장명, 코드, 지역, 브랜드 검색" />
+  <button type="submit" class="btn btn-secondary">검색</button>
+  <% if (q) { %><a href="/stores" class="btn btn-ghost">초기화</a><% } %>
+</form>
+
+<section class="card">
+  <% if (stores.length === 0) { %>
+    <p class="muted">등록된 매장이 없습니다.</p>
+  <% } else { %>
+  <table class="table">
+    <thead>
+      <tr><th>코드</th><th>매장명</th><th>브랜드</th><th>지역</th><th>채널</th><th>라운딩</th><th>최근 방문</th></tr>
+    </thead>
+    <tbody>
+      <% stores.forEach(s => { %>
+      <tr onclick="location.href='/stores/<%= s.id %>'" class="clickable">
+        <td><code><%= s.code %></code></td>
+        <td><%= s.name %></td>
+        <td><%= s.brand || '-' %></td>
+        <td><%= s.region || '-' %></td>
+        <td><%= s.channel || '-' %></td>
+        <td><%= s.rounding_count %></td>
+        <td><%= s.last_visit || '-' %></td>
+      </tr>
+      <% }) %>
+    </tbody>
+  </table>
+  <% } %>
+</section>
+<%- include('../partials/footer') %>
