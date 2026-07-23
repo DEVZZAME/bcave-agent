@@ -219,7 +219,11 @@ export function lintDesignArtifact(name: string, filePath: string): DesignLintRe
     const donutRe = new RegExp(`${ns}\\.chart\\.donut\\s*\\([^;]+\\);`, "g");
     for (const call of app.matchAll(donutRe)) {
       const limited = new RegExp(`\\.slice\\s*\\(\\s*0\\s*,\\s*(?:[1-${Math.min(maxCategories, 9)}])\\s*\\)`);
-      if (/\.map\s*\(/.test(call[0]) && !limited.test(call[0]) && !/기타|other/i.test(call[0])) {
+      // labels/data 변수를 호출 전에 구성하는 일반적인 코드도 인정한다.
+      // 호출문 내부만 검사하면 이미 slice + 기타로 제한한 코드를 반복 차단한다.
+      const explicitlyLimited = limited.test(call[0]) || limited.test(app);
+      const hasRemainderBucket = /기타|other/i.test(call[0]) || /기타|other/i.test(app);
+      if (/\.map\s*\(/.test(call[0]) && !explicitlyLimited && !hasRemainderBucket) {
         add("R11-donut-limit", `동적 도넛 데이터는 기타를 포함해 최대 ${maxCategories}개로 명시적으로 제한하세요.`);
       }
     }

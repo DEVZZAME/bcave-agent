@@ -62,7 +62,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     type: "function",
     function: {
       name: "read_file",
-      description: "Read the contents of a file at the given path",
+      description: "Read a file. For xlsx/xls/csv/tsv/ods this natively returns sheet names, normalized columns, preview rows, and the correct data placeholder; always use this instead of Python, pandas, openpyxl, or zipfile.",
       parameters: {
         type: "object",
         properties: {
@@ -870,6 +870,13 @@ export async function executeTool(
         // 산출물(HTML/대시보드)을 shell(cat/echo/python/node 등)로 직접 써서 데이터·검토
         // 파이프라인을 우회하는 것을 차단 — 반드시 write_file 로 저장해야 데이터 주입과 자동 검토가 적용된다.
         const cmd = String(args.command ?? "");
+        const readsSpreadsheetWithPython =
+          /python(?:3)?\b/i.test(cmd) &&
+          /\.(?:xlsx|xlsm?|xlsb|ods|csv|tsv)\b/i.test(cmd) &&
+          /(?:pandas|openpyxl|zipfile|xlrd|read_excel|load_workbook)/i.test(cmd);
+        if (readsSpreadsheetWithPython) {
+          return "[빠른 처리] 스프레드시트는 Python/pandas/openpyxl/zipfile로 읽지 마세요. 내장 read_file 도구가 시트·컬럼·미리보기를 직접 반환합니다.";
+        }
         const writesHtml =
           /(^|[^\w])(>>?|tee)\s*[^\s|&;]*\.html\b/i.test(cmd) || // 리다이렉션/tee 로 .html 생성
           (/(write_text|writeFileSync|writeFile|fs\.write|open\s*\([^)]*['"][wa])/i.test(cmd) && /\.html\b/i.test(cmd)) || // 프로그램적으로 .html 쓰기

@@ -61,6 +61,14 @@ describe("Tools", () => {
     expect(extractServerPorts(logs)).toEqual([5174, 3001]);
   });
 
+  it("redirects Python spreadsheet inspection to the native reader", async () => {
+    const result = await executeTool("shell_exec", {
+      command: "python3 -c \"import pandas as pd; pd.read_excel('sample.xlsx')\"",
+    }, testDir);
+    expect(result).toContain("내장 read_file");
+    expect(result).not.toContain("Traceback");
+  });
+
   describe("read_file", () => {
     it("reads file content", async () => {
       const result = await executeTool("read_file", { path: "hello.txt" }, testDir);

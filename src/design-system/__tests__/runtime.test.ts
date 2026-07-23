@@ -130,6 +130,23 @@ describe("BCAVE design pipeline", () => {
     ]));
     fs.rmSync(dir, { recursive: true, force: true });
   });
+
+  it("accepts a donut whose categories are limited before the chart call", () => {
+    const { dir, file } = writeArtifact([
+      "```html:body",
+      '<div class="page"><div class="card"><div class="chart-box donut"><canvas id="c"></canvas></div></div></div>',
+      "```",
+      "```js:app",
+      "const allSegments = Object.keys({VIP:3,활성:2,신규:1});",
+      "const labels = allSegments.slice(0,5);",
+      "if (allSegments.length > 5) labels.push('기타');",
+      "const values = labels.map(label => label === '기타' ? 0 : 1);",
+      "BCAVE.chart.donut(document.getElementById('c'), {labels: labels.map(String), data: values.map(Number)});",
+      "```",
+    ].join("\n"));
+    expect(lintDesignArtifact("bcave", file).violations.map((v) => v.rule)).not.toContain("R11-donut-limit");
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
 });
 
 describe("AXIS design pipeline", () => {

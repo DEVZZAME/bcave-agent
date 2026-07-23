@@ -400,6 +400,7 @@ export class ConversationManager {
     const maxTotalAppRepairRounds = Math.max(2, this.config.maxVerifyRounds + 1);
     let artifactValidationPending = false;
     let artifactRepairRounds = 0;
+    let artifactFailedWrites = 0;
     const executionRequested = /(실행해|실행시켜|서버.{0,8}(?:켜|띄워|실행)|(?:^|\s)(?:run|start)(?:\s|$))/i.test(userMessage);
     let runtimeStartAttempted = false;
     let runtimeStartVerified = false;
@@ -462,7 +463,7 @@ export class ConversationManager {
           // 성공 문구를 말해도 종료하지 않고, 같은 파일을 다시 작성하도록 되먹인다.
           if (artifactValidationPending && !signal?.aborted) {
             artifactRepairRounds++;
-            const maxArtifactRepairRounds = Math.max(3, this.config.maxVerifyRounds ?? 2);
+            const maxArtifactRepairRounds = 1;
             if (artifactRepairRounds > maxArtifactRepairRounds) {
               yield { type: "error", message: "디자인 산출물이 반복 수정 후에도 검토를 통과하지 못했습니다. 미완성 상태이므로 생성 완료로 처리하지 않습니다." };
               return;
@@ -710,11 +711,14 @@ export class ConversationManager {
             if (/\(검토 통과\)\s*$/.test(result)) {
               artifactValidationPending = false;
               artifactRepairRounds = 0;
+              artifactFailedWrites = 0;
             } else if (typeof args.design_system === "string") {
               // 디자인 시스템 산출물은 저장 실패/계약 위반/린트 실패 모두 미완성이다.
               artifactValidationPending = true;
+              artifactFailedWrites++;
             } else if (/^File written(?: but NOT complete)?:/m.test(result) && /(?:⚠|✗|문제가 발견)/.test(result)) {
               artifactValidationPending = true;
+              artifactFailedWrites++;
             }
           }
           // 코드 파일이 바뀌면 완료 시 자동 검증 대상으로 표시(HTML 단일 산출물은 reviewHtml 이 따로 담당).
@@ -725,6 +729,12 @@ export class ConversationManager {
             content: result,
           });
           yield { type: "tool_result", name, result };
+          // 모델이 실패한 write_file을 도구 호출로 계속 반복하면 기존의 no-tool 재시도
+          // 한도는 작동하지 않는다. 최초 실패 뒤 한 번만 재작성 기회를 주고 즉시 종료한다.
+          if (artifactValidationPending && artifactFailedWrites >= 2) {
+            yield { type: "error", message: "디자인 검토가 두 번 연속 실패해 빠른 생성 모드에서 중단했습니다. 마지막 검토 결과를 기준으로 다시 요청하면 이어서 수정할 수 있습니다." };
+            return;
+          }
         }
       }
     } catch (err) {
