@@ -16,6 +16,7 @@ export interface SessionModeOptions {
   delayMs?: number;
   random?: () => number;
   startService?: (projectPath: string) => Promise<string>;
+  installDeps?: (projectPath: string) => Promise<string>;
 }
 
 const wait = (ms: number, signal?: AbortSignal) => new Promise<void>((resolve) => {
@@ -52,6 +53,7 @@ export class SessionModeRunner {
   private readonly delayMs: number;
   private readonly random: () => number;
   private readonly startService: (projectPath: string) => Promise<string>;
+  private readonly installDeps: (projectPath: string) => Promise<string>;
   private pendingDashboard = false;
   private dashboardInput = "";
   private lastDashboardSystem: "bcave" | "axis" | null = null;
@@ -68,6 +70,8 @@ export class SessionModeRunner {
     this.random = options.random ?? Math.random;
     this.startService = options.startService ?? ((projectPath) =>
       executeTool("shell_exec", { command: "npm start" }, projectPath));
+    this.installDeps = options.installDeps ?? ((projectPath) =>
+      executeTool("shell_exec", { command: "npm install --no-audit --no-fund --loglevel=error" }, projectPath));
   }
 
   getHistory(): ChatCompletionMessageParam[] { return []; }
@@ -199,6 +203,18 @@ export class SessionModeRunner {
       yield { type: "text", content: `서버 실행 중: ${this.lastServiceUrl}` };
       yield { type: "done" };
       return;
+    }
+
+    // 배포 클론에는 프로젝트 node_modules가 없으므로(루트 .gitignore가 제외) 최초 1회 설치한다.
+    if (!fs.existsSync(path.join(this.lastProjectOutput, "node_modules"))) {
+      yield { type: "tool_start", name: "shell_exec", args: { command: "npm install" } };
+      const installResult = await this.installDeps(this.lastProjectOutput);
+      yield { type: "tool_result", name: "shell_exec", result: installResult };
+      if (/^(?:Exit code|Error:)/.test(installResult)) {
+        yield { type: "error", message: `의존성 설치에 실패했습니다.\n${installResult}` };
+        yield { type: "done" };
+        return;
+      }
     }
 
     yield { type: "tool_start", name: "shell_exec", args: { command: "npm start" } };

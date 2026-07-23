@@ -107,10 +107,16 @@ describe("SessionModeRunner", () => {
     fs.mkdirSync(path.join(prepared, "fashion-service"));
     fs.writeFileSync(path.join(prepared, "fashion-service", "package.json"), '{"scripts":{"start":"node server.js"}}');
     let startedPath = "";
+    let installedPath = "";
     const runner = new SessionModeRunner(cwd, {
       projectRoot: prepared,
       delayMs: 0,
       random: () => 0,
+      installDeps: async (projectPath) => {
+        installedPath = projectPath;
+        fs.mkdirSync(path.join(projectPath, "node_modules"), { recursive: true });
+        return "added 42 packages";
+      },
       startService: async (projectPath) => {
         startedPath = projectPath;
         return "[SERVER_STARTED] http://localhost:4100\nPID: 123";
@@ -118,8 +124,52 @@ describe("SessionModeRunner", () => {
     });
     await collect(runner, "패션회사에서 사용할 서비스를 개발해줘");
     const events = await collect(runner, "서버 실행해줘");
+    expect(installedPath).toBe(path.join(cwd, "fashion-service"));
     expect(startedPath).toBe(path.join(cwd, "fashion-service"));
     expect(events.some((event) => event.type === "text" && event.content.includes("http://localhost:4100"))).toBe(true);
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+
+  it("skips dependency install when node_modules already exists", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "bcave-session-noinstall-"));
+    const prepared = path.join(root, "project");
+    const cwd = path.join(root, "output");
+    fs.mkdirSync(path.join(prepared, "fashion-service", "node_modules"), { recursive: true });
+    fs.mkdirSync(cwd);
+    fs.writeFileSync(path.join(prepared, "fashion-service", "package.json"), '{"scripts":{"start":"node server.js"}}');
+    let installCalls = 0;
+    const runner = new SessionModeRunner(cwd, {
+      projectRoot: prepared,
+      delayMs: 0,
+      random: () => 0,
+      installDeps: async () => { installCalls += 1; return "up to date"; },
+      startService: async () => "[SERVER_STARTED] http://localhost:4200\nPID: 7",
+    });
+    await collect(runner, "패션회사에서 사용할 서비스를 개발해줘");
+    await collect(runner, "서버 실행해줘");
+    expect(installCalls).toBe(0);
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+
+  it("stops and reports when dependency install fails", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "bcave-session-installfail-"));
+    const prepared = path.join(root, "project");
+    const cwd = path.join(root, "output");
+    fs.mkdirSync(path.join(prepared, "fashion-service"), { recursive: true });
+    fs.mkdirSync(cwd);
+    fs.writeFileSync(path.join(prepared, "fashion-service", "package.json"), '{"scripts":{"start":"node server.js"}}');
+    let startCalls = 0;
+    const runner = new SessionModeRunner(cwd, {
+      projectRoot: prepared,
+      delayMs: 0,
+      random: () => 0,
+      installDeps: async () => "Exit code 1\nnpm ERR! network",
+      startService: async () => { startCalls += 1; return "[SERVER_STARTED] x"; },
+    });
+    await collect(runner, "패션회사에서 사용할 서비스를 개발해줘");
+    const events = await collect(runner, "서버 실행해줘");
+    expect(startCalls).toBe(0);
+    expect(events.some((event) => event.type === "error")).toBe(true);
     fs.rmSync(root, { recursive: true, force: true });
   });
 
