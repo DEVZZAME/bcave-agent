@@ -575,13 +575,9 @@ function reviewHtml(content: string, filePath: string): string[] {
     if (/(?:\.map|\.filter|\.forEach|\.reduce)\s*\(\s*(r|row|record|item)\s*=>[^;\n]{0,500}\1\s*\[\s*\d+\s*\]/i.test(appScripts)) {
       issues.push("주입된 행 객체를 r[0], r[7]처럼 숫자 인덱스로 읽고 있습니다. 각 행은 배열이 아니므로 값이 undefined가 되어 차트·표가 비게 됩니다. r['연월'], r['총매출'], r['세그먼트']처럼 read_file에 표시된 실제 컬럼명을 사용하세요.");
     }
-    // 고정 높이 차트 박스 + 2단 grid + align-items:start → 좌(차트)·우(카드) 아래끝 어긋남
-    const twoColGrid = /grid-template-columns\s*:\s*[^;{}]*(?:fr|minmax)[^;{}]*(?:fr|minmax)/i.test(content);
-    const topAligned = /align-items\s*:\s*(?:start|flex-start)/i.test(content);
-    const fixedChartBox = /position\s*:\s*relative[^{}]*height\s*:\s*\d{2,3}px|height\s*:\s*\d{2,3}px[^{}]*position\s*:\s*relative/i.test(content);
-    if (/<canvas/i.test(content) && twoColGrid && topAligned && fixedChartBox) {
-      issues.push("레이아웃: 고정 높이 차트 박스가 옆 카드/리스트와 같은 grid 행에 있는데 align-items:start 라 두 열의 아래끝이 어긋나고 빈 공간이 생깁니다. grid 에 align-items:stretch 를 주고, 차트 래퍼는 height:100%;min-height:280px(canvas 가 채움, maintainAspectRatio:false), 옆 열도 height:100% 로 높이를 맞추세요(맞추기 어려우면 세로로 쌓으세요).");
-    }
+    // 공통 디자인 CSS에는 사용하지 않은 2열 grid와 고정 높이 chart-box 정의도 항상 포함된다.
+    // 정규식만으로 실제 DOM의 같은 grid 행인지 판별하면 세로 stack까지 차단하는 오탐이므로,
+    // 시각적 정렬은 생성 규칙에 맡기고 내보내기 검토에서는 데이터/실행 오류만 차단한다.
   }
 
   // 3) 인라인 스크립트 문법 검사 (벤더 Chart.js·거대 데이터 스크립트 제외)

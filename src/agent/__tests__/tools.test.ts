@@ -132,6 +132,17 @@ describe("Tools", () => {
       expect(result).not.toContain(".slice(1+)");
     });
 
+    it("does not confuse unused design-system grid CSS with a stacked chart layout", async () => {
+      const result = await executeTool("write_file", {
+        path: "stacked-chart-dashboard.html",
+        design_system: "bcave",
+        body: '<main class="page"><div class="stack"><div class="card"><div class="chart-box tall"><canvas id="a"></canvas></div></div><div class="card"><div class="chart-box tall"><canvas id="b"></canvas></div></div></div></main>',
+        app_script: "window.__DATA=[{value:1}]; document.getElementById('a').dataset.ready='true'; document.getElementById('b').dataset.ready='true';",
+      }, testDir);
+      expect(result).toContain("검토 통과");
+      expect(result).not.toContain("고정 높이 차트 박스");
+    });
+
     it("never tells the model to stop repairing a failed design lint", async () => {
       const args = {
         path: "invalid-dashboard.html",
